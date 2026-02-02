@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/api/dialog";
 
+type DropTargetId = "source" | "target";
+
 interface DirectorySelectorProps {
   label: string;
   value: string;
   onChange: (path: string) => void;
   placeholder?: string;
+  /** 用于 Tauri 原生拖放：标识此选择器（收件箱/归档库） */
+  dropTargetId?: DropTargetId;
+  /** 当前悬停的拖放目标，用于高亮 */
+  dropTarget?: DropTargetId | null;
+  /** 拖拽进入/离开时通知父组件，以便 drop 时写入对应输入 */
+  onDropTargetChange?: (id: DropTargetId | null) => void;
 }
 
 export default function DirectorySelector({
@@ -13,8 +21,12 @@ export default function DirectorySelector({
   value,
   onChange,
   placeholder = "选择目录",
+  dropTargetId,
+  dropTarget,
+  onDropTargetChange,
 }: DirectorySelectorProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const isActiveDropTarget = dropTargetId != null && dropTarget === dropTargetId;
 
   const handleSelect = async () => {
     const selected = await open({
@@ -31,21 +43,19 @@ export default function DirectorySelector({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
+    if (dropTargetId != null) onDropTargetChange?.(dropTargetId);
   };
 
   const handleDragLeave = () => {
     setIsDragging(false);
+    if (dropTargetId != null) onDropTargetChange?.(null);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      // 注意：浏览器环境中的拖拽可能无法直接获取路径
-      // 这里需要用户通过按钮选择
-    }
+    onDropTargetChange?.(null);
+    // 实际路径由 Tauri appWindow.onFileDropEvent 提供并写入，此处仅阻止默认行为
   };
 
   return (
@@ -55,7 +65,7 @@ export default function DirectorySelector({
       </label>
       <div
         className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
-          isDragging
+          isDragging || isActiveDropTarget
             ? "border-blue-500 bg-blue-50"
             : "border-gray-300 bg-gray-50"
         }`}

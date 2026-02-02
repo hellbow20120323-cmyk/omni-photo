@@ -4,11 +4,11 @@
 /// - EXIF DateTimeOriginal 提取（图片）
 /// - 文件名中的日期匹配（照片与视频通用）
 /// - 文件创建时间 metadata.created()（macOS st_birthtime）
-/// - 文件移动/复制与跨平台路径处理
+/// - 文件复制与跨平台路径处理
 ///
 /// 严禁使用 accessed 或 modified 作为首选，拷贝会污染这些时间。
 use std::fs;
-use std::io::{BufReader, ErrorKind};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, offset::TimeZone};
@@ -218,29 +218,6 @@ pub fn get_unique_path(target_path: &Path) -> PathBuf {
             return new_path;
         }
         counter += 1;
-    }
-}
-
-/// 移动文件到目标位置
-/// 同盘使用 rename；跨盘（CrossesDevices）时先复制再删除，确保重复项都能移走。
-pub fn move_file(source: &Path, target: &Path) -> Result<(), String> {
-    // 确保目标目录存在
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("无法创建目标目录: {}", e))?;
-    }
-
-    let unique_target = get_unique_path(target);
-
-    match fs::rename(source, &unique_target) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == ErrorKind::CrossesDevices => {
-            // 跨文件系统：先复制再删除，保证每个重复文件都能移入 _Duplicates
-            fs::copy(source, &unique_target).map_err(|e| format!("无法复制文件(跨盘): {}", e))?;
-            fs::remove_file(source).map_err(|e| format!("无法删除源文件: {}", e))?;
-            Ok(())
-        }
-        Err(e) => Err(format!("无法移动文件: {}", e)),
     }
 }
 

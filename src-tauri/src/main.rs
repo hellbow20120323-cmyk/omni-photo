@@ -128,13 +128,12 @@ fn check_path_conflict(source: &PathBuf, target: &PathBuf) -> Result<(), String>
     Ok(())
 }
 
-/// 处理文件（移动或复制）
+/// 处理文件（仅复制，不删除源文件）
 /// * compare_with_archive: true = 收件箱与归档库一起比较去重；false = 仅收件箱内比较去重
 #[tauri::command]
 async fn process_files(
     source_dir: String,
     target_dir: String,
-    move_files: bool,
     compare_with_archive: bool,
     app_handle: tauri::AppHandle,
     state: State<'_, TaskStateHandle>,
@@ -228,7 +227,7 @@ async fn process_files(
             }
         };
 
-        // 检查重复：将重复文件移入 _Duplicates（若同名已存在则文件名加时间戳）
+        // 检查重复：将重复文件复制到 _Duplicates（若同名已存在则文件名加时间戳）
         if seen_hashes.contains(&hash) {
             let filename = file_path
                 .file_name()
@@ -238,7 +237,7 @@ async fn process_files(
 
             let file_size = std::fs::metadata(file_path).ok().map(|m| m.len()).unwrap_or(0);
 
-            match scanner::move_file(file_path, &dup_path) {
+            match scanner::copy_file(file_path, &dup_path) {
                 Ok(_) => {
                     stats.duplicates += 1;
                     stats.total_duplicate_size += file_size;
@@ -246,7 +245,7 @@ async fn process_files(
                         &app_handle,
                         idx + 1,
                         total,
-                        format!("[重复项] 移动至 _Duplicates: {}", filename),
+                        format!("[重复项] 复制至 _Duplicates: {}", filename),
                         &stats,
                     );
                 }
@@ -256,7 +255,7 @@ async fn process_files(
                         &app_handle,
                         idx + 1,
                         total,
-                        format!("重复文件移动失败: {} - {}", filename, e),
+                        format!("重复文件复制失败: {} - {}", filename, e),
                         &stats,
                     );
                 }
@@ -308,12 +307,8 @@ async fn process_files(
             .join(&month)
             .join(&filename);
 
-        // 移动或复制文件
-        let result = if move_files {
-            scanner::move_file(file_path, &dest_path)
-        } else {
-            scanner::copy_file(file_path, &dest_path)
-        };
+        // 复制文件（不删除源文件）
+        let result = scanner::copy_file(file_path, &dest_path);
 
         match result {
             Ok(_) => {
@@ -378,18 +373,41 @@ async fn get_duplicates_folder_size(target_dir: String) -> Result<u64, String> {
     dir_size_recursive(&dup_path).map_err(|e| format!("无法统计重复目录大小: {}", e))
 }
 
-/// 清空归档库下的 _Duplicates 目录（删除目录内所有内容后保留空目录）
+/// 磁盘空间预检结果：收件箱总大小、归档盘剩余空间、是否足够
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiskSpaceCheck {
+    /// 收件箱总大小（字节）
+    pub source_size: u64,
+    /// 归档库所在盘剩余空间（字节）
+    pub available_on_target: u64,
+    /// 剩余空间是否大于收件箱总大小
+    pub sufficient: bool,
+}
+
+/// 在开始整理前检查：归档库所在盘的剩余空间是否大于收件箱总大小（复制会占用约等于收件箱大小的空间）
 #[tauri::command]
-async fn clear_duplicates_folder(target_dir: String) -> Result<(), String> {
-    let dup_path = PathBuf::from(&target_dir).join("_Duplicates");
-    if !dup_path.exists() {
-        return Ok(());
+async fn check_disk_space(source_dir: String, target_dir: String) -> Result<DiskSpaceCheck, String> {
+    let source_path = PathBuf::from(&source_dir);
+    let target_path = PathBuf::from(&target_dir);
+
+    if !source_path.exists() || !source_path.is_dir() {
+        return Err("收件箱路径不存在或不是目录".to_string());
     }
-    if dup_path.is_dir() {
-        std::fs::remove_dir_all(&dup_path).map_err(|e| format!("无法删除重复目录: {}", e))?;
-        std::fs::create_dir_all(&dup_path).map_err(|e| format!("无法重建重复目录: {}", e))?;
+    if !target_path.exists() {
+        return Err("归档库路径不存在".to_string());
     }
-    Ok(())
+
+    let source_size = dir_size_recursive(&source_path).map_err(|e| format!("无法统计收件箱大小: {}", e))?;
+    let available_on_target = fs2::available_space(&target_path)
+        .map_err(|e| format!("无法读取归档盘剩余空间: {}", e))?;
+
+    let sufficient = available_on_target > source_size;
+
+    Ok(DiskSpaceCheck {
+        source_size,
+        available_on_target,
+        sufficient,
+    })
 }
 
 /// 取消处理任务
@@ -400,6 +418,26 @@ async fn cancel_task(state: State<'_, TaskStateHandle>) -> Result<(), String> {
     Ok(())
 }
 
+/// 将拖放路径解析为目录：若为目录则返回其规范路径，若为文件则返回其父目录的规范路径
+#[tauri::command]
+fn resolve_drop_path(path: String) -> Result<String, String> {
+    use std::fs;
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err("路径不存在".to_string());
+    }
+    let meta = fs::metadata(&p).map_err(|e| format!("无法读取路径: {}", e))?;
+    let dir = if meta.is_dir() {
+        p
+    } else {
+        p.parent()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| p.clone())
+    };
+    let canon = fs::canonicalize(&dir).map_err(|e| format!("无法解析目录: {}", e))?;
+    Ok(canon.to_string_lossy().to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(TaskState { cancelled: false })))
@@ -407,8 +445,9 @@ fn main() {
             scan_directory,
             process_files,
             get_duplicates_folder_size,
-            clear_duplicates_folder,
-            cancel_task
+            check_disk_space,
+            cancel_task,
+            resolve_drop_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

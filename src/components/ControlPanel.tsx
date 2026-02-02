@@ -1,6 +1,4 @@
 interface ControlPanelProps {
-  moveFiles: boolean;
-  onMoveFilesChange: (move: boolean) => void;
   compareWithArchive: boolean;
   onCompareWithArchiveChange: (value: boolean) => void;
   isProcessing: boolean;
@@ -9,8 +7,6 @@ interface ControlPanelProps {
 }
 
 export default function ControlPanel({
-  moveFiles,
-  onMoveFilesChange,
   compareWithArchive,
   onCompareWithArchiveChange,
   isProcessing,
@@ -19,31 +15,6 @@ export default function ControlPanel({
 }: ControlPanelProps) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center space-x-6">
-        <label className="flex items-center space-x-2">
-          <input
-            type="radio"
-            checked={moveFiles}
-            onChange={() => onMoveFilesChange(true)}
-            className="w-4 h-4 text-blue-600"
-          />
-          <span className="text-sm font-medium text-gray-700">
-            移动（清除原片）
-          </span>
-        </label>
-        <label className="flex items-center space-x-2">
-          <input
-            type="radio"
-            checked={!moveFiles}
-            onChange={() => onMoveFilesChange(false)}
-            className="w-4 h-4 text-blue-600"
-          />
-          <span className="text-sm font-medium text-gray-700">
-            复制（保留原片）
-          </span>
-        </label>
-      </div>
-
       <div className="flex items-center space-x-2">
         <input
           type="checkbox"

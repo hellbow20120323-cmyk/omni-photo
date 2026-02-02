@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
+import { appWindow } from "@tauri-apps/api/window";
 import DirectorySelector from "./components/DirectorySelector";
 import ProgressBar from "./components/ProgressBar";
 import LogViewer from "./components/LogViewer";
@@ -33,13 +34,14 @@ interface ProgressInfo {
 function App() {
   const [sourceDir, setSourceDir] = useState<string>("");
   const [targetDir, setTargetDir] = useState<string>("");
-  const [moveFiles, setMoveFiles] = useState<boolean>(true);
   const [compareWithArchive, setCompareWithArchive] = useState<boolean>(false);
   const [duplicatesFolderSize, setDuplicatesFolderSize] = useState<number | null>(null);
   const [duplicatesSizeLoading, setDuplicatesSizeLoading] = useState<boolean>(false);
   const [progress, setProgress] = useState<ProgressInfo | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  /** 当前拖拽悬停的目标：收件箱 / 归档库，用于 Tauri 原生拖放时确定写入哪个输入 */
+  const [dropTarget, setDropTarget] = useState<"source" | "target" | null>(null);
 
   const handleStatDuplicatesSize = async () => {
     if (!targetDir) return;
@@ -57,18 +59,6 @@ function App() {
     }
   };
 
-  const handleClearDuplicatesFolder = async () => {
-    if (!targetDir) return;
-    if (!window.confirm("确定要清空归档库下的 _Duplicates 目录吗？此操作不可恢复。")) return;
-    try {
-      await invoke("clear_duplicates_folder", { targetDir: targetDir });
-      setDuplicatesFolderSize(0);
-      setLogs((prev) => [...prev, "✅ 已清空重复目录 _Duplicates"]);
-    } catch (e) {
-      setLogs((prev) => [...prev, `❌ 清空重复目录失败: ${e}`]);
-    }
-  };
-
   // 监听进度事件
   useEffect(() => {
     const unlisten = listen<ProgressInfo>("progress", (event) => {
@@ -81,9 +71,57 @@ function App() {
     };
   }, []);
 
+  // 监听 Tauri 原生文件拖放（可获取真实路径）；结合 dropTarget 决定写入收件箱或归档库
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    appWindow.onFileDropEvent((event) => {
+      if (event.payload.type !== "drop" || !event.payload.paths?.length) return;
+      const target = dropTarget;
+      setDropTarget(null);
+      if (!target) return;
+      const path = event.payload.paths[0];
+      invoke<string>("resolve_drop_path", { path })
+        .then((dir) => {
+          if (target === "source") setSourceDir(dir);
+          else setTargetDir(dir);
+          if (target === "target") setDuplicatesFolderSize(null);
+        })
+        .catch((e) => setLogs((prev) => [...prev, `拖放解析路径失败: ${e}`]));
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [dropTarget]);
+
   const handleStart = async () => {
     if (!sourceDir || !targetDir) {
       alert("请先选择源目录和目标目录");
+      return;
+    }
+
+    try {
+      const check = await invoke<{
+        source_size: number;
+        available_on_target: number;
+        sufficient: boolean;
+      }>("check_disk_space", {
+        sourceDir: sourceDir,
+        targetDir: targetDir,
+      });
+      if (!check.sufficient) {
+        alert(
+          `磁盘空间不足，无法安全整理。\n\n` +
+            `收件箱总大小：${formatBytes(check.source_size)}\n` +
+            `归档库所在盘剩余空间：${formatBytes(check.available_on_target)}\n\n` +
+            `请释放归档盘空间后再试，或更换归档库到空间更大的磁盘。`
+        );
+        return;
+      }
+    } catch (e) {
+      setLogs((prev) => [...prev, `预检失败: ${e}`]);
+      alert(`磁盘空间预检失败: ${e}`);
       return;
     }
 
@@ -95,7 +133,6 @@ function App() {
       const stats = await invoke("process_files", {
         sourceDir: sourceDir,
         targetDir: targetDir,
-        moveFiles: moveFiles,
         compareWithArchive: compareWithArchive,
       });
 
@@ -137,6 +174,9 @@ function App() {
             value={sourceDir}
             onChange={setSourceDir}
             placeholder="选择或拖拽收件箱目录"
+            dropTargetId="source"
+            dropTarget={dropTarget}
+            onDropTargetChange={setDropTarget}
           />
 
           <DirectorySelector
@@ -147,6 +187,9 @@ function App() {
               setDuplicatesFolderSize(null);
             }}
             placeholder="选择或拖拽归档库目录"
+            dropTargetId="target"
+            dropTarget={dropTarget}
+            onDropTargetChange={setDropTarget}
           />
 
           {targetDir && (
@@ -167,19 +210,10 @@ function App() {
               >
                 {duplicatesSizeLoading ? "统计中…" : "统计"}
               </button>
-              <button
-                type="button"
-                onClick={handleClearDuplicatesFolder}
-                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
-              >
-                清空重复目录
-              </button>
             </div>
           )}
 
           <ControlPanel
-            moveFiles={moveFiles}
-            onMoveFilesChange={setMoveFiles}
             compareWithArchive={compareWithArchive}
             onCompareWithArchiveChange={setCompareWithArchive}
             isProcessing={isProcessing}

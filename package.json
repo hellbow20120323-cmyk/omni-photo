@@ -4,7 +4,8 @@
   "description": "全能照片管家 - 跨平台照片管理工具",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "clean": "kill -9 $(lsof -t -i:1420) 2>/dev/null || true",
+    "dev": "npm run clean && vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
