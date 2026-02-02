@@ -6,6 +6,7 @@ import DirectorySelector from "./components/DirectorySelector";
 import ProgressBar from "./components/ProgressBar";
 import LogViewer from "./components/LogViewer";
 import ControlPanel from "./components/ControlPanel";
+import AdvancedSettings from "./components/AdvancedSettings";
 
 /** 以 1024 为换算基数显示字节（B → KB → MB → GB） */
 function formatBytes(bytes: number): string {
@@ -31,6 +32,15 @@ interface ProgressInfo {
   };
 }
 
+interface AdvancedOptions {
+  /** 是否在归档库中保留源目录的一级目录结构 */
+  preserveTopLevelDir: boolean;
+  /** 自定义照片扩展名输入（逗号/空格分隔） */
+  photoExtensionsInput: string;
+  /** 自定义视频扩展名输入（逗号/空格分隔） */
+  videoExtensionsInput: string;
+}
+
 function App() {
   const [sourceDir, setSourceDir] = useState<string>("");
   const [targetDir, setTargetDir] = useState<string>("");
@@ -42,6 +52,14 @@ function App() {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   /** 当前拖拽悬停的目标：收件箱 / 归档库，用于 Tauri 原生拖放时确定写入哪个输入 */
   const [dropTarget, setDropTarget] = useState<"source" | "target" | null>(null);
+  /** 高级配置：保留一级目录、自定义扩展名 */
+  const [advancedOptions, setAdvancedOptions] = useState<AdvancedOptions>({
+    preserveTopLevelDir: false,
+    photoExtensionsInput: "jpg, jpeg, png, tiff, heic, raw, arw, dng, webp",
+    videoExtensionsInput: "mp4, mov, avi, mkv",
+  });
+  /** 高级配置面板是否展开（默认收起） */
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
   const handleStatDuplicatesSize = async () => {
     if (!targetDir) return;
@@ -125,6 +143,29 @@ function App() {
       return;
     }
 
+    // 将扩展名输入解析成数组（小写、去空、去重）
+    const parseExtInput = (input: string): string[] => {
+      const items = input
+        .split(/[,\s]+/)
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      return Array.from(new Set(items));
+    };
+
+    const photoExts = parseExtInput(advancedOptions.photoExtensionsInput);
+    const videoExts = parseExtInput(advancedOptions.videoExtensionsInput);
+
+    // 若为空数组，则不传给后端，让后端走默认逻辑
+    const advancedPayload: Record<string, unknown> = {
+      preserveTopLevelDir: advancedOptions.preserveTopLevelDir,
+    };
+    if (photoExts.length > 0) {
+      advancedPayload.photoExtensions = photoExts;
+    }
+    if (videoExts.length > 0) {
+      advancedPayload.videoExtensions = videoExts;
+    }
+
     setIsProcessing(true);
     setLogs([]);
     setProgress(null);
@@ -134,6 +175,7 @@ function App() {
         sourceDir: sourceDir,
         targetDir: targetDir,
         compareWithArchive: compareWithArchive,
+        advanced: advancedPayload,
       });
 
       setLogs((prev) => [...prev, "✅ 处理完成！"]);
@@ -220,6 +262,23 @@ function App() {
             onStart={handleStart}
             onCancel={handleCancel}
           />
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((prev) => !prev)}
+              className="text-xs text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline"
+            >
+              {showAdvanced ? "隐藏高级配置" : "显示高级配置"}
+            </button>
+          </div>
+
+          {showAdvanced && (
+            <AdvancedSettings
+              value={advancedOptions}
+              onChange={setAdvancedOptions}
+            />
+          )}
 
           {progress && (
             <>

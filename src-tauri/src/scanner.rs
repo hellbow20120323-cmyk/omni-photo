@@ -18,6 +18,12 @@ use regex::Regex;
 /// 可能包含 EXIF 的图片扩展名（用于优先尝试 EXIF）
 const EXIF_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "tiff", "tif", "heic", "heif", "raw", "arw", "dng", "webp"];
 
+/// 默认的“照片”扩展名（用于类型判断）
+const DEFAULT_PHOTO_EXTS: &[&str] = &["jpg", "jpeg", "png", "tiff", "heic", "raw", "arw"];
+
+/// 默认的“视频”扩展名（用于类型判断）
+const DEFAULT_VIDEO_EXTS: &[&str] = &["mp4", "mov", "avi", "mkv"];
+
 /// 日期解析结果：日期 + 可选日志消息（当日期来自文件名时填充）
 pub type FileDateResult = Result<(DateTime<Local>, Option<String>), String>;
 
@@ -171,18 +177,57 @@ pub enum FileType {
     Other,
 }
 
-/// 判断文件类型
-pub fn get_file_type(file_path: &Path) -> FileType {
-    let ext = file_path.extension()
+/// 判断文件类型（可选使用自定义扩展名集合）
+pub fn get_file_type_with_exts(
+    file_path: &Path,
+    photo_exts: Option<&[String]>,
+    video_exts: Option<&[String]>,
+) -> FileType {
+    let ext = file_path
+        .extension()
         .and_then(|s| s.to_str())
         .map(|s| s.to_lowercase())
         .unwrap_or_default();
 
-    match ext.as_str() {
-        "jpg" | "jpeg" | "png" | "tiff" | "heic" | "raw" | "arw" => FileType::Photo,
-        "mp4" | "mov" | "avi" | "mkv" => FileType::Video,
-        _ => FileType::Other,
+    if ext.is_empty() {
+        return FileType::Other;
     }
+
+    // 优先使用用户配置的扩展名集合
+    let is_photo = if let Some(custom) = photo_exts {
+        if !custom.is_empty() {
+            custom.iter().any(|e| e.eq_ignore_ascii_case(&ext))
+        } else {
+            false
+        }
+    } else {
+        DEFAULT_PHOTO_EXTS.contains(&ext.as_str())
+    };
+
+    if is_photo {
+        return FileType::Photo;
+    }
+
+    let is_video = if let Some(custom) = video_exts {
+        if !custom.is_empty() {
+            custom.iter().any(|e| e.eq_ignore_ascii_case(&ext))
+        } else {
+            false
+        }
+    } else {
+        DEFAULT_VIDEO_EXTS.contains(&ext.as_str())
+    };
+
+    if is_video {
+        FileType::Video
+    } else {
+        FileType::Other
+    }
+}
+
+/// 判断文件类型（向后兼容的默认实现）
+pub fn get_file_type(file_path: &Path) -> FileType {
+    get_file_type_with_exts(file_path, None, None)
 }
 
 /// 生成唯一的目标路径（如果文件已存在，添加时间戳）

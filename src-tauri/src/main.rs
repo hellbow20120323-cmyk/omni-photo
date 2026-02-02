@@ -32,6 +32,18 @@ pub struct ProcessingStats {
     pub total_duplicate_size: u64,
 }
 
+/// 前端传入的高级配置选项
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedOptions {
+    /// 是否在目标目录中保留源目录的一级目录结构
+    pub preserve_top_level_dir: bool,
+    /// 自定义照片扩展名（全部小写、不含点）；为空或缺省时使用后端默认列表
+    pub photo_extensions: Option<Vec<String>>,
+    /// 自定义视频扩展名（全部小写、不含点）；为空或缺省时使用后端默认列表
+    pub video_extensions: Option<Vec<String>>,
+}
+
 /// 处理任务状态
 #[derive(Debug, Clone)]
 struct TaskState {
@@ -135,6 +147,7 @@ async fn process_files(
     source_dir: String,
     target_dir: String,
     compare_with_archive: bool,
+    advanced: Option<AdvancedOptions>,
     app_handle: tauri::AppHandle,
     state: State<'_, TaskStateHandle>,
 ) -> Result<ProcessingStats, String> {
@@ -145,6 +158,27 @@ async fn process_files(
     }
     let source_path = PathBuf::from(&source_dir);
     let target_path = PathBuf::from(&target_dir);
+
+    // 解析高级配置：是否保留一级目录、照片/视频扩展名列表
+    let (preserve_top_level_dir, photo_exts, video_exts) = match advanced {
+        Some(opts) => {
+            // 归一化扩展名（去空、转小写）
+            let photo_exts = opts.photo_extensions.map(|list| {
+                list.into_iter()
+                    .map(|s| s.trim().to_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+            });
+            let video_exts = opts.video_extensions.map(|list| {
+                list.into_iter()
+                    .map(|s| s.trim().to_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+            });
+            (opts.preserve_top_level_dir, photo_exts, video_exts)
+        }
+        None => (false, None, None),
+    };
 
     // 验证路径
     if !source_path.exists() {
@@ -263,8 +297,12 @@ async fn process_files(
             continue;
         }
 
-        // 获取文件类型和日期
-        let file_type = scanner::get_file_type(file_path);
+        // 获取文件类型和日期（类型支持自定义扩展名）
+        let file_type = scanner::get_file_type_with_exts(
+            file_path,
+            photo_exts.as_deref(),
+            video_exts.as_deref(),
+        );
         let (date, date_source_msg) = match scanner::get_file_date(file_path) {
             Ok((d, msg)) => (d, msg),
             Err(_) => {
@@ -286,7 +324,7 @@ async fn process_files(
             scanner::FileType::Other => stats.others += 1,
         }
 
-        // 构建目标路径：目标目录/类型/年/月/文件名
+        // 构建目标路径：根据是否保留一级目录 & 根目录文件规则组织
         let type_dir = match file_type {
             scanner::FileType::Photo => "Photos",
             scanner::FileType::Video => "Videos",
@@ -300,12 +338,66 @@ async fn process_files(
             .to_string_lossy()
             .to_string();
 
-        // 按「类型/年/月」组织：目标目录/Photos|Videos|Others/年/月/文件名
-        let dest_path = target_path
-            .join(type_dir)
-            .join(&year)
-            .join(&month)
-            .join(&filename);
+        // 计算相对于收件箱的路径，用于判断是否为“根目录文件”以及提取一级目录名
+        // 若 strip_prefix 失败（理论上不应发生），则退回使用完整路径
+        let relative = file_path
+            .strip_prefix(&source_path)
+            .unwrap_or(file_path);
+
+        // 根目录文件：相对路径只有一个组件（例如：IMG_0001.jpg）
+        let mut components = relative.components();
+        let first_component = components.next();
+        let has_more = components.next().is_some();
+        let is_root_file = first_component
+            .as_ref()
+            .map(|c| !has_more && matches!(c, std::path::Component::Normal(_)))
+            .unwrap_or(false);
+
+        // 非根文件时，可能的“一级目录名”
+        let top_level_dir_name = if is_root_file {
+            None
+        } else {
+            match first_component {
+                Some(std::path::Component::Normal(os_str)) => {
+                    Some(os_str.to_string_lossy().to_string())
+                }
+                _ => None,
+            }
+        };
+
+        // 组织目标路径：
+        // 1. 根目录文件 → target/Inbox_Direct/类型/年/月/文件名
+        // 2. 子目录文件 + 勾选保留一级目录 → target/<一级目录>/类型/年/月/文件名
+        // 3. 其他情况保持现有：target/类型/年/月/文件名
+        let dest_path = if is_root_file {
+            target_path
+                .join("Inbox_Direct")
+                .join(type_dir)
+                .join(&year)
+                .join(&month)
+                .join(&filename)
+        } else if preserve_top_level_dir {
+            if let Some(ref top) = top_level_dir_name {
+                target_path
+                    .join(top)
+                    .join(type_dir)
+                    .join(&year)
+                    .join(&month)
+                    .join(&filename)
+            } else {
+                target_path
+                    .join(type_dir)
+                    .join(&year)
+                    .join(&month)
+                    .join(&filename)
+            }
+        } else {
+            target_path
+                .join(type_dir)
+                .join(&year)
+                .join(&month)
+                .join(&filename)
+        };
 
         // 复制文件（不删除源文件）
         let result = scanner::copy_file(file_path, &dest_path);
