@@ -26,7 +26,7 @@ omni-photo/
 │   │   │   └── compute_full_md5  # 完整 MD5（小文件）
 │   │   └── scanner.rs            # 文件扫描和处理
 │   │       ├── get_file_date     # 获取文件日期（EXIF优先）
-│   │       ├── get_file_type     # 判断文件类型
+│   │       ├── get_file_type_with_exts # 判断文件类型（支持自定义扩展名）
 │   │       ├── move_file         # 移动文件
 │   │       └── copy_file         # 复制文件
 │   ├── build.rs                  # Tauri 构建脚本

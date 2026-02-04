@@ -9,9 +9,18 @@ interface AdvancedOptions {
 interface AdvancedSettingsProps {
   value: AdvancedOptions;
   onChange: Dispatch<SetStateAction<AdvancedOptions>>;
+  /** 点击“保存配置”时触发，由上层负责真正的持久化 */
+  onSave: () => void;
+  /** 是否有尚未保存的修改，用于给出视觉提示 */
+  isDirty?: boolean;
 }
 
-export default function AdvancedSettings({ value, onChange }: AdvancedSettingsProps) {
+export default function AdvancedSettings({
+  value,
+  onChange,
+  onSave,
+  isDirty,
+}: AdvancedSettingsProps) {
   const handleTogglePreserve = (checked: boolean) => {
     onChange((prev) => ({
       ...prev,
@@ -97,6 +106,19 @@ export default function AdvancedSettings({ value, onChange }: AdvancedSettingsPr
             同上；仅影响“照片 / 视频 / 其他”分类，不改变去重逻辑。
           </p>
         </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
+        <p className="text-xs text-gray-500">
+          {isDirty ? "当前修改尚未保存" : "配置已保存"}
+        </p>
+        <button
+          type="button"
+          onClick={onSave}
+          className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+        >
+          保存配置
+        </button>
       </div>
     </div>
   );

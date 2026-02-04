@@ -5,10 +5,28 @@ mod hasher;
 mod scanner;
 
 use std::collections::HashSet;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 use serde::{Deserialize, Serialize};
+
+// #region agent log
+fn agent_log(location: &str, message: &str, hypothesis_id: &str, data: Option<serde_json::Value>) {
+    let payload = serde_json::json!({
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0),
+        "sessionId": "debug-session",
+        "hypothesisId": hypothesis_id
+    });
+    let path = std::env::current_dir().ok().map(|p| p.join(".cursor").join("debug.log")).unwrap_or_else(|| PathBuf::from(".cursor/debug.log"));
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{}", payload);
+    }
+}
+// #endregion
 
 /// 处理进度信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,10 +210,16 @@ async fn process_files(
     // 冲突检测：收件箱与归档库不能相同或嵌套
     check_path_conflict(&source_path, &target_path)?;
 
+    // #region agent log
+    agent_log("main.rs:process_files", "process_files entered", "H2", None);
+    // #endregion
     // 扫描收件箱文件（收件箱内的 _Duplicates 目录不参与比较和去重）
     let mut files = Vec::new();
     scan_recursive(&source_path, &mut files, Some("_Duplicates"), None)?;
     let total = files.len();
+    // #region agent log
+    agent_log("main.rs:process_files", "after scan_recursive inbox", "H2", Some(serde_json::json!({ "files_count": total })));
+    // #endregion
 
     if total == 0 {
         return Ok(ProcessingStats {
@@ -222,11 +246,17 @@ async fn process_files(
         let source_canon = std::fs::canonicalize(&source_path).unwrap_or_else(|_| source_path.clone());
         let mut archive_files = Vec::new();
         if let Ok(()) = scan_recursive(&target_path, &mut archive_files, Some("_Duplicates"), Some(&source_canon)) {
+            // #region agent log
+            agent_log("main.rs:process_files", "archive scan done, hashing", "H3", Some(serde_json::json!({ "archive_files_count": archive_files.len() })));
+            // #endregion
             for path in &archive_files {
                 if let Some(h) = hasher::compute_file_hash(path) {
                     seen_hashes.insert(h);
                 }
             }
+            // #region agent log
+            agent_log("main.rs:process_files", "after compare_with_archive hashing", "H3", Some(serde_json::json!({ "seen_hashes": seen_hashes.len() })));
+            // #endregion
         }
     }
 
@@ -479,6 +509,9 @@ pub struct DiskSpaceCheck {
 /// 在开始整理前检查：归档库所在盘的剩余空间是否大于收件箱总大小（复制会占用约等于收件箱大小的空间）
 #[tauri::command]
 async fn check_disk_space(source_dir: String, target_dir: String) -> Result<DiskSpaceCheck, String> {
+    // #region agent log
+    agent_log("main.rs:check_disk_space", "check_disk_space entered", "H1", None);
+    // #endregion
     let source_path = PathBuf::from(&source_dir);
     let target_path = PathBuf::from(&target_dir);
 
@@ -490,6 +523,9 @@ async fn check_disk_space(source_dir: String, target_dir: String) -> Result<Disk
     }
 
     let source_size = dir_size_recursive(&source_path).map_err(|e| format!("无法统计收件箱大小: {}", e))?;
+    // #region agent log
+    agent_log("main.rs:check_disk_space", "after dir_size_recursive", "H1", Some(serde_json::json!({ "source_size": source_size })));
+    // #endregion
     let available_on_target = fs2::available_space(&target_path)
         .map_err(|e| format!("无法读取归档盘剩余空间: {}", e))?;
 

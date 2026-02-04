@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { appWindow } from "@tauri-apps/api/window";
@@ -58,8 +58,27 @@ function App() {
     photoExtensionsInput: "jpg, jpeg, png, tiff, heic, raw, arw, dng, webp",
     videoExtensionsInput: "mp4, mov, avi, mkv",
   });
+  /** 高级配置是否有尚未保存的修改（用于“保存配置”按钮提示） */
+  const [advancedDirty, setAdvancedDirty] = useState<boolean>(false);
   /** 高级配置面板是否展开（默认收起） */
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  // #region agent log
+  const firstProgressLogged = useRef(false);
+  const debugLog = (message: string, data: Record<string, unknown>, hypothesisId: string) => {
+    fetch("http://127.0.0.1:7242/ingest/daed423e-5dfd-4436-9df1-2d61b8be3976", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "App.tsx",
+        message,
+        data,
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        hypothesisId,
+      }),
+    }).catch(() => {});
+  };
+  // #endregion
 
   const handleStatDuplicatesSize = async () => {
     if (!targetDir) return;
@@ -77,9 +96,37 @@ function App() {
     }
   };
 
+  // 启动时从 localStorage 加载已保存的高级配置
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("omniPhotoAdvancedOptions");
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<AdvancedOptions>;
+        setAdvancedOptions((prev) => ({
+          preserveTopLevelDir: parsed.preserveTopLevelDir ?? prev.preserveTopLevelDir,
+          photoExtensionsInput: parsed.photoExtensionsInput ?? prev.photoExtensionsInput,
+          videoExtensionsInput: parsed.videoExtensionsInput ?? prev.videoExtensionsInput,
+        }));
+        setAdvancedDirty(false);
+      }
+    } catch {
+      // 忽略解析错误，继续使用默认配置
+    }
+  }, []);
+
   // 监听进度事件
   useEffect(() => {
     const unlisten = listen<ProgressInfo>("progress", (event) => {
+      // #region agent log
+      if (!firstProgressLogged.current) {
+        firstProgressLogged.current = true;
+        debugLog("first progress event received", {
+          current: event.payload.current,
+          total: event.payload.total,
+          message: event.payload.message,
+        }, "H2");
+      }
+      // #endregion
       setProgress(event.payload);
       setLogs((prev) => [...prev, event.payload.message]);
     });
@@ -114,12 +161,23 @@ function App() {
   }, [dropTarget]);
 
   const handleStart = async () => {
+    // #region agent log
+    debugLog("handleStart entered", { sourceDir: !!sourceDir, targetDir: !!targetDir }, "H4");
+    // #endregion
     if (!sourceDir || !targetDir) {
       alert("请先选择源目录和目标目录");
       return;
     }
 
+    // 立即显示“正在预检”，避免收件箱文件很多时长时间无反馈
+    setIsProcessing(true);
+    setLogs(["正在预检磁盘空间…"]);
+    setProgress(null);
+
     try {
+      // #region agent log
+      debugLog("before check_disk_space", {}, "H1");
+      // #endregion
       const check = await invoke<{
         source_size: number;
         available_on_target: number;
@@ -128,7 +186,12 @@ function App() {
         sourceDir: sourceDir,
         targetDir: targetDir,
       });
+      // #region agent log
+      debugLog("after check_disk_space", { sufficient: check.sufficient }, "H1");
+      // #endregion
       if (!check.sufficient) {
+        setIsProcessing(false);
+        setLogs((prev) => [...prev, `预检完成：磁盘空间不足`]);
         alert(
           `磁盘空间不足，无法安全整理。\n\n` +
             `收件箱总大小：${formatBytes(check.source_size)}\n` +
@@ -138,6 +201,7 @@ function App() {
         return;
       }
     } catch (e) {
+      setIsProcessing(false);
       setLogs((prev) => [...prev, `预检失败: ${e}`]);
       alert(`磁盘空间预检失败: ${e}`);
       return;
@@ -166,8 +230,11 @@ function App() {
       advancedPayload.videoExtensions = videoExts;
     }
 
-    setIsProcessing(true);
-    setLogs([]);
+    // #region agent log
+    firstProgressLogged.current = false;
+    debugLog("setIsProcessing true, invoking process_files", {}, "H2");
+    // #endregion
+    setLogs((prev) => [...prev, "预检完成，开始整理…"]);
     setProgress(null);
 
     try {
@@ -276,7 +343,23 @@ function App() {
           {showAdvanced && (
             <AdvancedSettings
               value={advancedOptions}
-              onChange={setAdvancedOptions}
+              onChange={(updater) => {
+                setAdvancedDirty(true);
+                setAdvancedOptions(updater);
+              }}
+              onSave={() => {
+                try {
+                  localStorage.setItem(
+                    "omniPhotoAdvancedOptions",
+                    JSON.stringify(advancedOptions),
+                  );
+                  setAdvancedDirty(false);
+                  setLogs((prev) => [...prev, "高级配置已保存"]);
+                } catch (e) {
+                  setLogs((prev) => [...prev, `高级配置保存失败: ${e}`]);
+                }
+              }}
+              isDirty={advancedDirty}
             />
           )}
 

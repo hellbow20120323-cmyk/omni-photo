@@ -225,11 +225,6 @@ pub fn get_file_type_with_exts(
     }
 }
 
-/// 判断文件类型（向后兼容的默认实现）
-pub fn get_file_type(file_path: &Path) -> FileType {
-    get_file_type_with_exts(file_path, None, None)
-}
-
 /// 生成唯一的目标路径（如果文件已存在，添加时间戳）
 pub fn get_unique_path(target_path: &Path) -> PathBuf {
     if !target_path.exists() {

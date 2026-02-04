@@ -6,6 +6,7 @@ dist/
 # Rust
 Cargo.lock
 **/*.rs.bk
+*.json.bk
 
 # IDE
 .vscode/
@@ -24,3 +25,9 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+
+# Apple 签名证书与私钥（勿提交）
+developerID_application.cer
+*.certSigningRequest
+*.p12
+*.pfx
