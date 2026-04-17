@@ -28,7 +28,7 @@ fn agent_log(location: &str, message: &str, hypothesis_id: &str, data: Option<se
 }
 // #endregion
 
-/// 处理进度信息
+/// Progress payload for the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgressInfo {
     pub current: usize,
@@ -37,7 +37,7 @@ pub struct ProgressInfo {
     pub stats: ProcessingStats,
 }
 
-/// 处理统计信息
+/// Aggregated counts during a run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessingStats {
     pub photos: usize,
@@ -46,23 +46,23 @@ pub struct ProcessingStats {
     pub duplicates: usize,
     pub errors: usize,
     pub processed: usize,
-    /// 重复文件总大小（字节），实时累加并随进度事件推送
+    /// Total bytes in _Duplicates (updated as duplicates are copied).
     pub total_duplicate_size: u64,
 }
 
-/// 前端传入的高级配置选项
+/// Advanced options from the frontend.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdvancedOptions {
-    /// 是否在目标目录中保留源目录的一级目录结构
+    /// Keep one top-level folder from the source tree in the archive.
     pub preserve_top_level_dir: bool,
-    /// 自定义照片扩展名（全部小写、不含点）；为空或缺省时使用后端默认列表
+    /// Photo extensions (lowercase, no dot); omit for built-in defaults.
     pub photo_extensions: Option<Vec<String>>,
-    /// 自定义视频扩展名（全部小写、不含点）；为空或缺省时使用后端默认列表
+    /// Video extensions (lowercase, no dot); omit for built-in defaults.
     pub video_extensions: Option<Vec<String>>,
 }
 
-/// 处理任务状态
+/// Cancellation flag for the current job.
 #[derive(Debug, Clone)]
 struct TaskState {
     cancelled: bool,
@@ -70,17 +70,17 @@ struct TaskState {
 
 type TaskStateHandle = Arc<Mutex<TaskState>>;
 
-/// 扫描目录并返回文件列表
+/// List all files under a directory (recursive).
 #[tauri::command]
 async fn scan_directory(path: String) -> Result<Vec<String>, String> {
     let dir_path = PathBuf::from(&path);
     
     if !dir_path.exists() {
-        return Err("目录不存在".to_string());
+        return Err("Directory does not exist".to_string());
     }
 
     if !dir_path.is_dir() {
-        return Err("路径不是目录".to_string());
+        return Err("Path is not a directory".to_string());
     }
 
     let mut files = Vec::new();
@@ -89,9 +89,9 @@ async fn scan_directory(path: String) -> Result<Vec<String>, String> {
     Ok(files.iter().map(|p| p.to_string_lossy().to_string()).collect())
 }
 
-/// 递归扫描目录
-/// * skip_dir_name: 若为 Some(name)，则跳过名为 name 的子目录（如收件箱中的 _Duplicates）
-/// * skip_descend_into: 若为 Some(path)，则不再进入该路径或其子路径（归档库扫描时排除收件箱，从源头避免收件箱内文件被误判为重复）
+/// Recursive directory walk.
+/// * skip_dir_name: skip subdirs with this name (e.g. `_Duplicates` in inbox).
+/// * skip_descend_into: do not descend into this path (excludes inbox when scanning archive).
 fn scan_recursive(
     dir: &PathBuf,
     files: &mut Vec<PathBuf>,
@@ -99,27 +99,27 @@ fn scan_recursive(
     skip_descend_into: Option<&PathBuf>,
 ) -> Result<(), String> {
     let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("无法读取目录: {}", e))?;
+        .map_err(|e| format!("Cannot read directory: {}", e))?;
 
     for entry in entries {
-        let entry = entry.map_err(|e| format!("无法读取目录项: {}", e))?;
+        let entry = entry.map_err(|e| format!("Cannot read directory entry: {}", e))?;
         let path = entry.path();
 
         if path.is_dir() {
-            // 跳过隐藏目录
+            // Skip hidden directories (跳过隐藏目录)
             if path.file_name()
                 .and_then(|n| n.to_str())
                 .map(|s| s.starts_with('.'))
                 .unwrap_or(false) {
                 continue;
             }
-            // 跳过指定名称的目录（如收件箱中的 _Duplicates）
+            // Skip directories with this basename (e.g. inbox `_Duplicates`) (跳过指定名称目录)
             if let Some(name) = skip_dir_name {
                 if path.file_name().and_then(|n| n.to_str()) == Some(name) {
                     continue;
                 }
             }
-            // 扫描归档库时：不进入收件箱目录（path == 收件箱 或 收件箱在该 path 下）
+            // When scanning archive: do not descend into inbox (`path == inbox` or inbox under `path`) (扫描归档库时不进入收件箱)
             if let Some(skip) = skip_descend_into {
                 if path == *skip || skip.strip_prefix(&path).is_ok() {
                     continue;
@@ -127,7 +127,7 @@ fn scan_recursive(
             }
             scan_recursive(&path, files, skip_dir_name, skip_descend_into)?;
         } else if path.is_file() {
-            // 跳过隐藏文件
+            // Skip hidden files (跳过隐藏文件)
             if path.file_name()
                 .and_then(|n| n.to_str())
                 .map(|s| s.starts_with('.'))
@@ -141,25 +141,25 @@ fn scan_recursive(
     Ok(())
 }
 
-/// 检测收件箱与归档库是否重复或嵌套，若冲突则返回错误信息
+/// Reject if inbox and archive are the same or nested.
 fn check_path_conflict(source: &PathBuf, target: &PathBuf) -> Result<(), String> {
-    let source_canon = std::fs::canonicalize(source).map_err(|e| format!("无法解析收件箱路径: {}", e))?;
-    let target_canon = std::fs::canonicalize(target).map_err(|e| format!("无法解析归档库路径: {}", e))?;
+    let source_canon = std::fs::canonicalize(source).map_err(|e| format!("Cannot resolve inbox path: {}", e))?;
+    let target_canon = std::fs::canonicalize(target).map_err(|e| format!("Cannot resolve archive path: {}", e))?;
 
     if source_canon == target_canon {
-        return Err("收件箱与归档库不能为同一目录，请重新选择。".to_string());
+        return Err("Inbox and archive cannot be the same folder. Choose two different folders.".to_string());
     }
     if source_canon.strip_prefix(&target_canon).is_ok() {
-        return Err("收件箱不能位于归档库内部，请将收件箱与归档库设为两个独立目录。".to_string());
+        return Err("Inbox cannot be inside the archive. Use two separate folders.".to_string());
     }
     if target_canon.strip_prefix(&source_canon).is_ok() {
-        return Err("归档库不能位于收件箱内部，请将收件箱与归档库设为两个独立目录。".to_string());
+        return Err("Archive cannot be inside the inbox. Use two separate folders.".to_string());
     }
     Ok(())
 }
 
-/// 处理文件（仅复制，不删除源文件）
-/// * compare_with_archive: true = 收件箱与归档库一起比较去重；false = 仅收件箱内比较去重
+/// Copy files into archive layout; never delete sources.
+/// * compare_with_archive: if true, dedupe against existing archive content too.
 #[tauri::command]
 async fn process_files(
     source_dir: String,
@@ -169,7 +169,7 @@ async fn process_files(
     app_handle: tauri::AppHandle,
     state: State<'_, TaskStateHandle>,
 ) -> Result<ProcessingStats, String> {
-    // 重置取消标志
+    // Reset cancellation flag (重置取消标志)
     {
         let mut task_state = state.lock().unwrap();
         task_state.cancelled = false;
@@ -177,10 +177,10 @@ async fn process_files(
     let source_path = PathBuf::from(&source_dir);
     let target_path = PathBuf::from(&target_dir);
 
-    // 解析高级配置：是否保留一级目录、照片/视频扩展名列表
+    // Advanced options: preserve top-level folder, photo/video extension lists (高级配置)
     let (preserve_top_level_dir, photo_exts, video_exts) = match advanced {
         Some(opts) => {
-            // 归一化扩展名（去空、转小写）
+            // Normalize extensions: trim, lowercase (归一化扩展名)
             let photo_exts = opts.photo_extensions.map(|list| {
                 list.into_iter()
                     .map(|s| s.trim().to_lowercase())
@@ -198,22 +198,22 @@ async fn process_files(
         None => (false, None, None),
     };
 
-    // 验证路径
+    // Validate paths (验证路径)
     if !source_path.exists() {
-        return Err("源目录不存在".to_string());
+        return Err("Source directory does not exist".to_string());
     }
     if !target_path.exists() {
         std::fs::create_dir_all(&target_path)
-            .map_err(|e| format!("无法创建目标目录: {}", e))?;
+            .map_err(|e| format!("Cannot create target directory: {}", e))?;
     }
 
-    // 冲突检测：收件箱与归档库不能相同或嵌套
+    // Inbox vs archive must differ and not nest (冲突检测)
     check_path_conflict(&source_path, &target_path)?;
 
     // #region agent log
     agent_log("main.rs:process_files", "process_files entered", "H2", None);
     // #endregion
-    // 扫描收件箱文件（收件箱内的 _Duplicates 目录不参与比较和去重）
+    // List inbox files; `_Duplicates` under inbox is skipped (扫描收件箱，排除 _Duplicates)
     let mut files = Vec::new();
     scan_recursive(&source_path, &mut files, Some("_Duplicates"), None)?;
     let total = files.len();
@@ -233,15 +233,15 @@ async fn process_files(
         });
     }
 
-    // 重复仓库：目标目录下的 _Duplicates 文件夹
+    // Duplicate bucket: `_Duplicates` under target (重复文件目录)
     let duplicates_dir = target_path.join("_Duplicates");
     std::fs::create_dir_all(&duplicates_dir)
-        .map_err(|e| format!("无法创建重复仓库 _Duplicates: {}", e))?;
+        .map_err(|e| format!("Cannot create _Duplicates folder: {}", e))?;
 
-    // 已见过的哈希：仅用于判断重复；只有“首个”会进主归档并加入此集合，后续所有同哈希文件都移入 _Duplicates（不加入集合）
+    // Seen hashes: first file wins main archive; later same-hash copies go to `_Duplicates` (已见哈希集合)
     let mut seen_hashes: HashSet<String> = HashSet::new();
 
-    // 可选：与归档库一起比较去重。仅以正常归档目录（Photos/Videos/Others）参与比较，不包含 _Duplicates；扫描时直接不进入收件箱与 _Duplicates 目录
+    // Optional: seed hashes from archive (Photos/Videos/Others only; skip inbox & `_Duplicates`) (与归档库比对去重)
     if compare_with_archive {
         let source_canon = std::fs::canonicalize(&source_path).unwrap_or_else(|_| source_path.clone());
         let mut archive_files = Vec::new();
@@ -270,9 +270,9 @@ async fn process_files(
         total_duplicate_size: 0,
     };
 
-    // 处理每个文件
+    // Process each file (处理每个文件)
     for (idx, file_path) in files.iter().enumerate() {
-        // 检查取消标志
+        // Cancellation check (检查取消标志)
         {
             let state = state.lock().unwrap();
             if state.cancelled {
@@ -280,18 +280,18 @@ async fn process_files(
             }
         }
 
-        // 计算文件哈希
+        // File hash (计算文件哈希)
         let hash = match hasher::compute_file_hash(file_path) {
             Some(h) => h,
             None => {
                 stats.errors += 1;
                 send_progress(&app_handle, idx + 1, total, 
-                    format!("跳过无法读取的文件: {}", file_path.display()), &stats);
+                    format!("Skipped unreadable file: {}", file_path.display()), &stats);
                 continue;
             }
         };
 
-        // 检查重复：将重复文件复制到 _Duplicates（若同名已存在则文件名加时间戳）
+        // Duplicate: copy to `_Duplicates` (timestamp if name exists) (重复文件处理)
         if seen_hashes.contains(&hash) {
             let filename = file_path
                 .file_name()
@@ -309,7 +309,7 @@ async fn process_files(
                         &app_handle,
                         idx + 1,
                         total,
-                        format!("[重复项] 复制至 _Duplicates: {}", filename),
+                        format!("[Duplicate] Copied to _Duplicates: {}", filename),
                         &stats,
                     );
                 }
@@ -319,7 +319,7 @@ async fn process_files(
                         &app_handle,
                         idx + 1,
                         total,
-                        format!("重复文件复制失败: {} - {}", filename, e),
+                        format!("Duplicate copy failed: {} - {}", filename, e),
                         &stats,
                     );
                 }
@@ -327,7 +327,7 @@ async fn process_files(
             continue;
         }
 
-        // 获取文件类型和日期（类型支持自定义扩展名）
+        // File type & date (custom extensions for type) (类型与日期)
         let file_type = scanner::get_file_type_with_exts(
             file_path,
             photo_exts.as_deref(),
@@ -338,23 +338,23 @@ async fn process_files(
             Err(_) => {
                 stats.errors += 1;
                 send_progress(&app_handle, idx + 1, total,
-                    format!("无法获取文件日期: {}", file_path.display()), &stats);
+                    format!("Could not read file date: {}", file_path.display()), &stats);
                 continue;
             }
         };
-        // 若日期来自文件名，输出到日志
+        // Log when date was parsed from filename (日期来自文件名时记录)
         if let Some(ref msg) = date_source_msg {
             send_progress(&app_handle, idx + 1, total, msg.clone(), &stats);
         }
 
-        // 更新统计
+        // Update counters (更新统计)
         match file_type {
             scanner::FileType::Photo => stats.photos += 1,
             scanner::FileType::Video => stats.videos += 1,
             scanner::FileType::Other => stats.others += 1,
         }
 
-        // 构建目标路径：根据是否保留一级目录 & 根目录文件规则组织
+        // Destination path: top-level preserve + root-file rules (目标路径规则)
         let type_dir = match file_type {
             scanner::FileType::Photo => "Photos",
             scanner::FileType::Video => "Videos",
@@ -364,17 +364,17 @@ async fn process_files(
         let year = date.format("%Y").to_string();
         let month = date.format("%m").to_string();
         let filename = file_path.file_name()
-            .ok_or("无法获取文件名")?
+            .ok_or("Could not get file name")?
             .to_string_lossy()
             .to_string();
 
-        // 计算相对于收件箱的路径，用于判断是否为“根目录文件”以及提取一级目录名
-        // 若 strip_prefix 失败（理论上不应发生），则退回使用完整路径
+        // Path relative to inbox: detect root file & top-level folder name (相对收件箱路径)
+        // If strip_prefix fails (should not), fall back to full path
         let relative = file_path
             .strip_prefix(&source_path)
             .unwrap_or(file_path);
 
-        // 根目录文件：相对路径只有一个组件（例如：IMG_0001.jpg）
+        // Root file: single path component (e.g. IMG_0001.jpg) (根目录文件)
         let mut components = relative.components();
         let first_component = components.next();
         let has_more = components.next().is_some();
@@ -383,7 +383,7 @@ async fn process_files(
             .map(|c| !has_more && matches!(c, std::path::Component::Normal(_)))
             .unwrap_or(false);
 
-        // 非根文件时，可能的“一级目录名”
+        // For non-root files: first path component as top-level folder (一级目录名)
         let top_level_dir_name = if is_root_file {
             None
         } else {
@@ -395,10 +395,10 @@ async fn process_files(
             }
         };
 
-        // 组织目标路径：
-        // 1. 根目录文件 → target/Inbox_Direct/类型/年/月/文件名
-        // 2. 子目录文件 + 勾选保留一级目录 → target/<一级目录>/类型/年/月/文件名
-        // 3. 其他情况保持现有：target/类型/年/月/文件名
+        // Layout: (目标路径组织)
+        // 1. Root file → target/Inbox_Direct/<type>/Y/M/file
+        // 2. Subfolder + preserve top-level → target/<folder>/<type>/Y/M/file
+        // 3. Else → target/<type>/Y/M/file
         let dest_path = if is_root_file {
             target_path
                 .join("Inbox_Direct")
@@ -429,7 +429,7 @@ async fn process_files(
                 .join(&filename)
         };
 
-        // 复制文件（不删除源文件）
+        // Copy only; do not delete source (复制，不删源)
         let result = scanner::copy_file(file_path, &dest_path);
 
         match result {
@@ -438,12 +438,12 @@ async fn process_files(
                 stats.processed += 1;
                 let dest_subpath = format!("{}/{}/{}", type_dir, year, month);
                 send_progress(&app_handle, idx + 1, total,
-                    format!("已处理: {} → {}", filename, dest_subpath), &stats);
+                    format!("Processed: {} → {}", filename, dest_subpath), &stats);
             }
             Err(e) => {
                 stats.errors += 1;
                 send_progress(&app_handle, idx + 1, total,
-                    format!("处理失败: {} - {}", filename, e), &stats);
+                    format!("Failed: {} - {}", filename, e), &stats);
             }
         }
     }
@@ -451,7 +451,7 @@ async fn process_files(
     Ok(stats)
 }
 
-/// 发送进度更新事件
+/// Emit progress to the frontend.
 fn send_progress(
     app_handle: &tauri::AppHandle,
     current: usize,
@@ -469,7 +469,7 @@ fn send_progress(
     app_handle.emit_all("progress", &progress).ok();
 }
 
-/// 递归统计目录下所有文件的总大小（字节）
+/// Total file size under a directory (recursive).
 fn dir_size_recursive(path: &Path) -> std::io::Result<u64> {
     let mut total: u64 = 0;
     let entries = std::fs::read_dir(path)?;
@@ -485,28 +485,28 @@ fn dir_size_recursive(path: &Path) -> std::io::Result<u64> {
     Ok(total)
 }
 
-/// 统计归档库下 _Duplicates 目录的总大小（字节），以 1024 为换算基数；目录不存在或为空则返回 0
+/// Total size of `_Duplicates` under archive (bytes); base-1024 display in UI. Returns 0 if missing/empty. (统计 _Duplicates 大小)
 #[tauri::command]
 async fn get_duplicates_folder_size(target_dir: String) -> Result<u64, String> {
     let dup_path = PathBuf::from(&target_dir).join("_Duplicates");
     if !dup_path.exists() || !dup_path.is_dir() {
         return Ok(0);
     }
-    dir_size_recursive(&dup_path).map_err(|e| format!("无法统计重复目录大小: {}", e))
+    dir_size_recursive(&dup_path).map_err(|e| format!("Could not measure _Duplicates size: {}", e))
 }
 
-/// 磁盘空间预检结果：收件箱总大小、归档盘剩余空间、是否足够
+/// Disk check: inbox bytes vs free space on archive volume.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiskSpaceCheck {
-    /// 收件箱总大小（字节）
+    /// Total bytes in inbox tree.
     pub source_size: u64,
-    /// 归档库所在盘剩余空间（字节）
+    /// Free bytes on volume containing archive.
     pub available_on_target: u64,
-    /// 剩余空间是否大于收件箱总大小
+    /// True if free space > inbox size.
     pub sufficient: bool,
 }
 
-/// 在开始整理前检查：归档库所在盘的剩余空间是否大于收件箱总大小（复制会占用约等于收件箱大小的空间）
+/// Before run: ensure archive volume has more free space than inbox size.
 #[tauri::command]
 async fn check_disk_space(source_dir: String, target_dir: String) -> Result<DiskSpaceCheck, String> {
     // #region agent log
@@ -516,18 +516,18 @@ async fn check_disk_space(source_dir: String, target_dir: String) -> Result<Disk
     let target_path = PathBuf::from(&target_dir);
 
     if !source_path.exists() || !source_path.is_dir() {
-        return Err("收件箱路径不存在或不是目录".to_string());
+        return Err("Inbox path is missing or not a directory".to_string());
     }
     if !target_path.exists() {
-        return Err("归档库路径不存在".to_string());
+        return Err("Archive path does not exist".to_string());
     }
 
-    let source_size = dir_size_recursive(&source_path).map_err(|e| format!("无法统计收件箱大小: {}", e))?;
+    let source_size = dir_size_recursive(&source_path).map_err(|e| format!("Could not measure inbox size: {}", e))?;
     // #region agent log
     agent_log("main.rs:check_disk_space", "after dir_size_recursive", "H1", Some(serde_json::json!({ "source_size": source_size })));
     // #endregion
     let available_on_target = fs2::available_space(&target_path)
-        .map_err(|e| format!("无法读取归档盘剩余空间: {}", e))?;
+        .map_err(|e| format!("Could not read free space on archive volume: {}", e))?;
 
     let sufficient = available_on_target > source_size;
 
@@ -538,7 +538,7 @@ async fn check_disk_space(source_dir: String, target_dir: String) -> Result<Disk
     })
 }
 
-/// 取消处理任务
+/// Request cooperative cancel.
 #[tauri::command]
 async fn cancel_task(state: State<'_, TaskStateHandle>) -> Result<(), String> {
     let mut task_state = state.lock().unwrap();
@@ -546,15 +546,15 @@ async fn cancel_task(state: State<'_, TaskStateHandle>) -> Result<(), String> {
     Ok(())
 }
 
-/// 将拖放路径解析为目录：若为目录则返回其规范路径，若为文件则返回其父目录的规范路径
+/// Resolve drop target to a directory (file → parent).
 #[tauri::command]
 fn resolve_drop_path(path: String) -> Result<String, String> {
     use std::fs;
     let p = PathBuf::from(&path);
     if !p.exists() {
-        return Err("路径不存在".to_string());
+        return Err("Path does not exist".to_string());
     }
-    let meta = fs::metadata(&p).map_err(|e| format!("无法读取路径: {}", e))?;
+    let meta = fs::metadata(&p).map_err(|e| format!("Cannot read path: {}", e))?;
     let dir = if meta.is_dir() {
         p
     } else {
@@ -562,7 +562,7 @@ fn resolve_drop_path(path: String) -> Result<String, String> {
             .map(PathBuf::from)
             .unwrap_or_else(|| p.clone())
     };
-    let canon = fs::canonicalize(&dir).map_err(|e| format!("无法解析目录: {}", e))?;
+    let canon = fs::canonicalize(&dir).map_err(|e| format!("Cannot resolve directory: {}", e))?;
     Ok(canon.to_string_lossy().to_string())
 }
 

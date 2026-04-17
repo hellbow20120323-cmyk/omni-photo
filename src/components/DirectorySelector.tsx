@@ -1,38 +1,45 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { open } from "@tauri-apps/api/dialog";
+import { FolderOpen } from "lucide-react";
+import { useDisplayMode } from "../context/DisplayModeContext";
+import { BilingualInline, BilingualButtonLabel } from "./Bilingual";
 
 type DropTargetId = "source" | "target";
 
 interface DirectorySelectorProps {
-  label: string;
+  labelEn: string;
+  labelZh: string;
+  placeholderEn: string;
+  placeholderZh: string;
   value: string;
   onChange: (path: string) => void;
-  placeholder?: string;
-  /** 用于 Tauri 原生拖放：标识此选择器（收件箱/归档库） */
   dropTargetId?: DropTargetId;
-  /** 当前悬停的拖放目标，用于高亮 */
   dropTarget?: DropTargetId | null;
-  /** 拖拽进入/离开时通知父组件，以便 drop 时写入对应输入 */
   onDropTargetChange?: (id: DropTargetId | null) => void;
 }
 
 export default function DirectorySelector({
-  label,
+  labelEn,
+  labelZh,
+  placeholderEn,
+  placeholderZh,
   value,
   onChange,
-  placeholder = "选择目录",
   dropTargetId,
   dropTarget,
   onDropTargetChange,
 }: DirectorySelectorProps) {
+  const { mode } = useDisplayMode();
   const [isDragging, setIsDragging] = useState(false);
   const isActiveDropTarget = dropTargetId != null && dropTarget === dropTargetId;
+  const lifted = isDragging || isActiveDropTarget;
 
   const handleSelect = async () => {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: `选择${label}`,
+      title: mode === "bilingual" ? `${labelEn} · ${labelZh}` : labelZh,
     });
 
     if (selected && typeof selected === "string") {
@@ -55,38 +62,72 @@ export default function DirectorySelector({
     e.preventDefault();
     setIsDragging(false);
     onDropTargetChange?.(null);
-    // 实际路径由 Tauri appWindow.onFileDropEvent 提供并写入，此处仅阻止默认行为
   };
 
   return (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">
-        {label}
+    <div className="min-w-0 flex-1 space-y-2">
+      <label className="block text-xs font-medium uppercase tracking-[0.12em] text-sea-800/55">
+        <BilingualInline
+          en={labelEn}
+          zh={labelZh}
+          primaryClassName="text-sea-900/90"
+          secondaryClassName="text-[11px] font-normal normal-case tracking-normal text-sea-800/50"
+        />
       </label>
-      <div
-        className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
-          isDragging || isActiveDropTarget
-            ? "border-blue-500 bg-blue-50"
-            : "border-gray-300 bg-gray-50"
+      <motion.div
+        animate={{
+          scale: lifted ? 1.02 : 1,
+          borderColor: lifted ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.22)",
+        }}
+        transition={{ type: "spring", stiffness: 420, damping: 28 }}
+        className={`rounded-[22px] border bg-white/25 p-4 shadow-glass-sm backdrop-blur-md sm:p-5 ${
+          lifted ? "shadow-glass ring-1 ring-white/35" : ""
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-gray-600 truncate">
-              {value || placeholder}
-            </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            <FolderOpen
+              className="mt-0.5 h-4 w-4 shrink-0 text-sea-700/80"
+              strokeWidth={1.75}
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1">
+              {value ? (
+                <p className="text-sm font-light leading-snug text-sea-950 truncate" title={value}>
+                  {value}
+                </p>
+              ) : (
+                <p className="text-sm font-light leading-snug">
+                  <BilingualInline
+                    en={placeholderEn}
+                    zh={placeholderZh}
+                    primaryClassName="text-sea-900/85"
+                    secondaryClassName="text-xs font-normal text-sea-800/55"
+                  />
+                </p>
+              )}
+            </div>
           </div>
-          <button
+          <motion.button
+            type="button"
             onClick={handleSelect}
-            className="ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            className="shrink-0 rounded-full border border-white/35 bg-white/30 px-4 py-2 text-sea-900 shadow-glass-sm backdrop-blur-sm hover:bg-white/45"
           >
-            选择目录
-          </button>
+            <BilingualButtonLabel
+              en="Browse…"
+              zh="浏览…"
+              primaryClassName="text-xs font-medium"
+              secondaryClassName="text-[10px] font-normal text-sea-800/65"
+            />
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

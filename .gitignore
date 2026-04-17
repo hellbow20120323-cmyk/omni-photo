@@ -2,6 +2,7 @@
 node_modules/
 target/
 dist/
+src-tauri/dist/
 
 # Rust
 Cargo.lock
@@ -31,3 +32,6 @@ developerID_application.cer
 *.certSigningRequest
 *.p12
 *.pfx
+
+# Installer / release artifacts
+*.pkg

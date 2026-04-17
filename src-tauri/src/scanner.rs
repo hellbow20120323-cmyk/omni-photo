@@ -1,12 +1,12 @@
-/// 照片扫描与处理逻辑
+/// Photo scan helpers (dates, copy).
 ///
-/// 功能：
-/// - EXIF DateTimeOriginal 提取（图片）
-/// - 文件名中的日期匹配（照片与视频通用）
-/// - 文件创建时间 metadata.created()（macOS st_birthtime）
-/// - 文件复制与跨平台路径处理
+/// Features:
+/// - EXIF DateTimeOriginal (images)
+/// - Date patterns in filenames (photos & videos)
+/// - `metadata.created()` / birthtime
+/// - File copy helpers
 ///
-/// 严禁使用 accessed 或 modified 作为首选，拷贝会污染这些时间。
+/// Do not prefer atime/mtime; copying skews them.
 use std::fs;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -15,63 +15,63 @@ use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, offset::TimeZone};
 use exif::{In, Reader, Tag};
 use regex::Regex;
 
-/// 可能包含 EXIF 的图片扩展名（用于优先尝试 EXIF）
+/// Extensions we try EXIF on first.
 const EXIF_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "tiff", "tif", "heic", "heif", "raw", "arw", "dng", "webp"];
 
-/// 默认的“照片”扩展名（用于类型判断）
+/// Default photo extensions.
 const DEFAULT_PHOTO_EXTS: &[&str] = &["jpg", "jpeg", "png", "tiff", "heic", "raw", "arw"];
 
-/// 默认的“视频”扩展名（用于类型判断）
+/// Default video extensions.
 const DEFAULT_VIDEO_EXTS: &[&str] = &["mp4", "mov", "avi", "mkv"];
 
-/// 日期解析结果：日期 + 可选日志消息（当日期来自文件名时填充）
+/// Parsed date + optional log line when from filename.
 pub type FileDateResult = Result<(DateTime<Local>, Option<String>), String>;
 
-/// 获取文件的拍摄/创建时间
+/// Best-effort capture / creation time.
 ///
-/// 优先级：
-/// 1. EXIF DateTimeOriginal（仅对可能含 EXIF 的图片扩展名尝试）
-/// 2. 文件名中的日期（YYYY-MM-DD / YYYY_MM_DD / YYYYMMDD，需校验合法性）
-/// 3. 系统 metadata.created()（macOS st_birthtime）
+/// Order:
+/// 1. EXIF DateTimeOriginal when extension may carry EXIF
+/// 2. Filename date patterns (validated)
+/// 3. `metadata.created()`
 ///
-/// 照片与视频扩展名均支持；不使用 accessed/modified。
+/// Same pipeline for photos/videos; no atime/mtime.
 pub fn get_file_date(file_path: &Path) -> FileDateResult {
-    // 1. 对可能含 EXIF 的图片，优先尝试 EXIF DateTimeOriginal
+    // 1. EXIF DateTimeOriginal when extension may carry EXIF (优先 EXIF)
     if has_exif_extension(file_path) {
         if let Ok(dt) = try_exif_datetime_original(file_path) {
             return Ok((dt, None));
         }
     }
 
-    // 2. 从文件名匹配日期（照片、视频等通用）
+    // 2. Filename date patterns (photos/videos) (文件名日期)
     if let Some((dt, log_msg)) = try_date_from_filename(file_path) {
         return Ok((dt, Some(log_msg)));
     }
 
-    // 3. 系统创建时间 metadata.created()
+    // 3. `metadata.created()` (系统创建时间)
     let metadata = fs::metadata(file_path)
-        .map_err(|e| format!("无法读取文件元数据: {}", e))?;
+        .map_err(|e| format!("Cannot read file metadata: {}", e))?;
 
     let created = metadata
         .created()
-        .map_err(|e| format!("无法获取文件创建时间(created/birthtime): {}", e))?;
+        .map_err(|e| format!("Cannot read file creation time: {}", e))?;
 
     let duration = created
         .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|_| "无法转换创建时间为时间戳".to_string())?;
+        .map_err(|_| "Cannot convert creation time to timestamp".to_string())?;
 
     let dt = DateTime::from_timestamp(duration.as_secs() as i64, duration.subsec_nanos())
         .map(|d| d.with_timezone(&Local))
-        .ok_or_else(|| "创建时间超出范围".to_string())?;
+        .ok_or_else(|| "Creation time out of range".to_string())?;
     Ok((dt, None))
 }
 
-/// 从文件名中匹配日期并校验合法性
-/// 支持：YYYY-MM-DD、YYYY_MM_DD、YYYYMMDD（8 位数字，且前后为非数字或边界）
+/// Parse date from filename with validation.
+/// Supports YYYY-MM-DD, YYYY_MM_DD, YYYYMMDD (bounded digits).
 fn try_date_from_filename(file_path: &Path) -> Option<(DateTime<Local>, String)> {
     let name = file_path.file_name()?.to_str()?;
 
-    // 模式 1：YYYY-MM-DD 或 YYYY_MM_DD
+    // Pattern 1: YYYY-MM-DD or YYYY_MM_DD (模式 1)
     let re_sep = Regex::new(r"(\d{4})[-_](\d{2})[-_](\d{2})").ok()?;
     if let Some(caps) = re_sep.captures(name) {
         let (y, m, d) = (
@@ -83,11 +83,11 @@ fn try_date_from_filename(file_path: &Path) -> Option<(DateTime<Local>, String)>
             let ndt = naive.and_hms_opt(0, 0, 0)?;
             let dt = Local.from_local_datetime(&ndt).single()?;
             let label = format!("{:04}-{:02}-{:02}", y, m, d);
-            return Some((dt, format!("从文件名解析到日期: {}", label)));
+            return Some((dt, format!("Date from filename: {}", label)));
         }
     }
 
-    // 模式 2：YYYYMMDD（8 位连续数字，且前后为非数字或边界）
+    // Pattern 2: YYYYMMDD (8 digits; bounded by non-digits) (模式 2)
     let re_compact = Regex::new(r"(\d{4})(\d{2})(\d{2})").ok()?;
     for caps in re_compact.captures_iter(name) {
         let (y, m, d) = (
@@ -95,7 +95,7 @@ fn try_date_from_filename(file_path: &Path) -> Option<(DateTime<Local>, String)>
             caps.get(2)?.as_str().parse::<u32>().ok()?,
             caps.get(3)?.as_str().parse::<u32>().ok()?,
         );
-        // 确保是“独立”的 8 位：匹配起始前为非数字或字符串起始，匹配结束为非数字或字符串结束
+        // Ensure standalone 8-digit run: non-digit or boundary before/after (独立8 位)
         let full = caps.get(0)?;
         let start = full.start();
         let end = full.end();
@@ -108,14 +108,14 @@ fn try_date_from_filename(file_path: &Path) -> Option<(DateTime<Local>, String)>
             let ndt = naive.and_hms_opt(0, 0, 0)?;
             let dt = Local.from_local_datetime(&ndt).single()?;
             let label = format!("{:04}-{:02}-{:02}", y, m, d);
-            return Some((dt, format!("从文件名解析到日期: {}", label)));
+            return Some((dt, format!("Date from filename: {}", label)));
         }
     }
 
     None
 }
 
-/// 校验并构造合法 NaiveDate（月份 1–12，日期在当月有效范围内）
+/// Build `NaiveDate` if month/day valid.
 fn valid_naive_date(year: i32, month: u32, day: u32) -> Option<NaiveDate> {
     if !(1..=12).contains(&month) {
         return None;
@@ -123,7 +123,7 @@ fn valid_naive_date(year: i32, month: u32, day: u32) -> Option<NaiveDate> {
     NaiveDate::from_ymd_opt(year, month, day)
 }
 
-/// 判断扩展名是否可能包含 EXIF
+/// Whether we attempt EXIF for this extension.
 fn has_exif_extension(path: &Path) -> bool {
     let ext = path
         .extension()
@@ -135,41 +135,41 @@ fn has_exif_extension(path: &Path) -> bool {
     }
 }
 
-/// 从图片 EXIF 读取 DateTimeOriginal，失败时返回 Err（不 panic）
+/// Read EXIF DateTimeOriginal; returns Err on failure.
 fn try_exif_datetime_original(file_path: &Path) -> Result<DateTime<Local>, String> {
-    let file = fs::File::open(file_path).map_err(|e| format!("无法打开文件: {}", e))?;
+    let file = fs::File::open(file_path).map_err(|e| format!("Cannot open file: {}", e))?;
     let mut buf = BufReader::new(file);
 
     let exif = Reader::new()
         .read_from_container(&mut buf)
-        .map_err(|e| format!("EXIF 解析失败: {}", e))?;
+        .map_err(|e| format!("EXIF parse failed: {}", e))?;
 
     let field = exif
         .get_field(Tag::DateTimeOriginal, In::PRIMARY)
-        .ok_or("无 EXIF DateTimeOriginal")?;
+        .ok_or("No EXIF DateTimeOriginal")?;
 
-    // EXIF 日期格式: "YYYY:MM:DD HH:MM:SS" (ASCII)
+    // EXIF date string: "YYYY:MM:DD HH:MM:SS" (ASCII) (EXIF 日期格式)
     let s = match &field.value {
         exif::Value::Ascii(ref segments) => {
             segments
                 .first()
                 .and_then(|seg| std::str::from_utf8(seg).ok())
                 .map(|s| s.trim_matches('\0').trim())
-                .ok_or("EXIF DateTimeOriginal 格式无效")?
+                .ok_or("Invalid EXIF DateTimeOriginal format")?
         }
-        _ => return Err("EXIF DateTimeOriginal 类型不是 ASCII".to_string()),
+        _ => return Err("EXIF DateTimeOriginal is not ASCII".to_string()),
     };
 
     let naive = NaiveDateTime::parse_from_str(s, "%Y:%m:%d %H:%M:%S")
-        .map_err(|e| format!("EXIF 日期解析失败: {}", e))?;
+        .map_err(|e| format!("EXIF date parse failed: {}", e))?;
 
     Local
         .from_local_datetime(&naive)
         .single()
-        .ok_or_else(|| "EXIF 日期无法转换为本地时间".to_string())
+        .ok_or_else(|| "EXIF date could not convert to local time".to_string())
 }
 
-/// 文件类型枚举
+/// File category for sorting.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FileType {
     Photo,
@@ -177,7 +177,7 @@ pub enum FileType {
     Other,
 }
 
-/// 判断文件类型（可选使用自定义扩展名集合）
+/// Classify file; optional extension lists.
 pub fn get_file_type_with_exts(
     file_path: &Path,
     photo_exts: Option<&[String]>,
@@ -193,7 +193,7 @@ pub fn get_file_type_with_exts(
         return FileType::Other;
     }
 
-    // 优先使用用户配置的扩展名集合
+    // Prefer user-provided extension lists when set
     let is_photo = if let Some(custom) = photo_exts {
         if !custom.is_empty() {
             custom.iter().any(|e| e.eq_ignore_ascii_case(&ext))
@@ -225,7 +225,7 @@ pub fn get_file_type_with_exts(
     }
 }
 
-/// 生成唯一的目标路径（如果文件已存在，添加时间戳）
+/// Unique destination path (timestamp suffix if name exists).
 pub fn get_unique_path(target_path: &Path) -> PathBuf {
     if !target_path.exists() {
         return target_path.to_path_buf();
@@ -239,7 +239,7 @@ pub fn get_unique_path(target_path: &Path) -> PathBuf {
         .unwrap_or("");
     let parent = target_path.parent().unwrap_or(Path::new("."));
 
-    // 添加时间戳
+    // Timestamp suffix
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -261,20 +261,20 @@ pub fn get_unique_path(target_path: &Path) -> PathBuf {
     }
 }
 
-/// 复制文件到目标位置
+/// Copy file to destination (creates parent dirs).
 pub fn copy_file(source: &Path, target: &Path) -> Result<(), String> {
-    // 确保目标目录存在
+    // Ensure parent exists
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)
-            .map_err(|e| format!("无法创建目标目录: {}", e))?;
+            .map_err(|e| format!("Cannot create target directory: {}", e))?;
     }
 
-    // 获取唯一路径
+    // Resolve name clash
     let unique_target = get_unique_path(target);
 
-    // 复制文件（保留元数据）
+    // Copy (metadata preserved per platform)
     fs::copy(source, &unique_target)
-        .map_err(|e| format!("无法复制文件: {}", e))?;
+        .map_err(|e| format!("Cannot copy file: {}", e))?;
 
     Ok(())
 }

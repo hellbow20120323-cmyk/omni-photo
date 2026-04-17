@@ -1,7 +1,7 @@
 [package]
 name = "omni-photo"
 version = "0.1.0"
-description = "全能照片管家 - 跨平台照片管理工具"
+description = "Omni Photo — cross-platform photo organizer (全能照片管家)"
 authors = ["you"]
 license = ""
 repository = ""
@@ -25,5 +25,5 @@ fs2 = "0.4"
 tokio = { version = "1", features = ["full"] }
 
 [features]
-# This feature is used for production builds or when `devPath` points to the filesystem
+# Tauri CLI passes `--features custom-protocol` on release builds; root crate must declare it. (release 需声明 custom-protocol)
 custom-protocol = ["tauri/custom-protocol"]

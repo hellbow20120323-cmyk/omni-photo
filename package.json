@@ -1,7 +1,7 @@
 {
   "name": "omni-photo",
   "version": "0.1.0",
-  "description": "全能照片管家 - 跨平台照片管理工具",
+  "description": "Omni Photo — cross-platform photo organizer (全能照片管家)",
   "type": "module",
   "scripts": {
     "clean": "kill -9 $(lsof -t -i:1420) 2>/dev/null || true",
@@ -10,10 +10,12 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build --bundles app --target universal-apple-darwin"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.5.0",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.8.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

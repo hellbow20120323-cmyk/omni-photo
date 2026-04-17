@@ -1,9 +1,9 @@
 {
   "build": {
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && rm -rf src-tauri/dist && cp -r dist src-tauri/dist",
     "devPath": "http://localhost:1420",
-    "distDir": "../dist",
+    "distDir": "dist",
     "withGlobalTauri": false
   },
   "package": {
@@ -37,6 +37,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
+      "resources": ["dist/**/*"],
       "macOS": {
         "entitlements": "Entitlements.plist",
         "signingIdentity": "Developer ID Application: tallboy chen (8JWMAN8ZT3)"
@@ -49,7 +50,7 @@
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "OmniPhoto - 全能照片管家",
+        "title": "OmniPhoto — Photo organizer · 照片整理",
         "width": 900,
         "height": 700
       }

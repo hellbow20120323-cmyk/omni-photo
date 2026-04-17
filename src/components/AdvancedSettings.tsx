@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { BilingualStack, BilingualInline, BilingualButtonLabel } from "./Bilingual";
 
 interface AdvancedOptions {
   preserveTopLevelDir: boolean;
@@ -9,9 +10,7 @@ interface AdvancedOptions {
 interface AdvancedSettingsProps {
   value: AdvancedOptions;
   onChange: Dispatch<SetStateAction<AdvancedOptions>>;
-  /** 点击“保存配置”时触发，由上层负责真正的持久化 */
   onSave: () => void;
-  /** 是否有尚未保存的修改，用于给出视觉提示 */
   isDirty?: boolean;
 }
 
@@ -43,14 +42,16 @@ export default function AdvancedSettings({
   };
 
   return (
-    <div className="space-y-3 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-800">高级配置</h2>
-          <p className="mt-0.5 text-xs text-gray-500">
-            可选：保留源目录一级目录结构，及自定义照片 / 视频扩展名。
-          </p>
-        </div>
+    <div className="glass-panel-subtle space-y-5 rounded-2xl border border-dashed border-white/25 p-4">
+      <div>
+        <h2 className="text-sm font-medium text-sea-950">
+          <BilingualInline
+            en="Advanced organizing rules"
+            zh="高级整理规则"
+            primaryClassName="font-medium text-sea-950"
+            secondaryClassName="text-xs font-normal text-sea-800/60"
+          />
+        </h2>
       </div>
 
       <div className="flex items-start gap-2">
@@ -59,68 +60,123 @@ export default function AdvancedSettings({
           id="preserve-top-level-dir"
           checked={value.preserveTopLevelDir}
           onChange={(e) => handleTogglePreserve(e.target.checked)}
-          className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600"
+          className="mt-1 h-4 w-4 shrink-0 rounded border-white/40 bg-white/30 text-sea-700"
         />
-        <label htmlFor="preserve-top-level-dir" className="text-sm text-gray-700">
-          保留源目录的一级目录结构：
-          <span className="block text-xs text-gray-500">
-            例如 <code className="rounded bg-gray-100 px-1 py-0.5">相册A/IMG_0001.jpg</code>{" "}
-            会整理到 <code className="rounded bg-gray-100 px-1 py-0.5">归档库/相册A/Photos/年/月/…</code>；
-            根目录下的文件（无子目录）统一放入{" "}
-            <code className="rounded bg-gray-100 px-1 py-0.5">Inbox_Direct/&lt;类型&gt;/年/月/…</code>。
-          </span>
+        <label htmlFor="preserve-top-level-dir" className="cursor-pointer text-sm text-sea-900/90">
+          <BilingualStack
+            en="Keep folder-based categories"
+            zh="保持文件夹分类结构"
+            primaryClassName="font-medium text-sea-900"
+            secondaryClassName="text-xs font-normal text-sea-800/65 mt-1"
+          />
+          <p className="mt-1.5 text-xs leading-relaxed text-sea-800/72">
+            <BilingualStack
+              en='When enabled, files are archived using folder names from your "path to organize".'
+              zh="开启后，文件将按「待整理目录」里的文件夹名称进行归档。"
+              primaryClassName="text-sea-800/78"
+              secondaryClassName="text-[11px] text-sea-800/58 mt-1"
+            />
+          </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-sea-800/68">
+            <BilingualStack
+              en="For example: /Album A/photo.jpg → stays under /Archive/Album A/… after organizing."
+              zh="例如：/相册A/照片.jpg 归档后会保留在 /归档/相册A/... 下。"
+              primaryClassName="text-sea-800/75"
+              secondaryClassName="text-[11px] text-sea-800/60 mt-0.5"
+            />
+          </p>
         </label>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-1">
-          <label htmlFor="photo-exts" className="block text-xs font-medium text-gray-700">
-            照片扩展名
-          </label>
-          <input
-            id="photo-exts"
-            type="text"
-            value={value.photoExtensionsInput}
-            onChange={(e) => handlePhotoExtChange(e.target.value)}
-            className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="例如：jpg, jpeg, png, heic"
+      <div className="space-y-3 border-t border-white/15 pt-4">
+        <h3 className="text-xs font-medium text-sea-900">
+          <BilingualInline
+            en="File type recognition"
+            zh="文件类型识别"
+            primaryClassName="text-sea-900"
+            secondaryClassName="text-[11px] font-normal text-sea-800/55"
           />
-          <p className="text-xs text-gray-500">
-            以逗号或空格分隔；不区分大小写；留空则使用内置默认列表。
-          </p>
+        </h3>
+        <div className="space-y-3">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+            <label
+              htmlFor="photo-exts"
+              className="shrink-0 text-xs font-medium text-sea-900 sm:basis-36 sm:pt-0.5"
+            >
+              <BilingualInline
+                en="Photo extensions:"
+                zh="照片扩展名："
+                primaryClassName="text-sea-900"
+                secondaryClassName="text-[11px] font-normal text-sea-800/55"
+              />
+            </label>
+            <input
+              id="photo-exts"
+              type="text"
+              value={value.photoExtensionsInput}
+              onChange={(e) => handlePhotoExtChange(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl border border-white/25 bg-white/30 px-3 py-2 text-sm text-sea-950 shadow-inner backdrop-blur-sm placeholder:text-sea-800/40 focus:border-sea-500/40 focus:outline-none focus:ring-1 focus:ring-sea-600/30"
+              placeholder="jpg, png, heic..."
+            />
+          </div>
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+            <label
+              htmlFor="video-exts"
+              className="shrink-0 text-xs font-medium text-sea-900 sm:basis-36 sm:pt-0.5"
+            >
+              <BilingualInline
+                en="Video extensions:"
+                zh="视频扩展名："
+                primaryClassName="text-sea-900"
+                secondaryClassName="text-[11px] font-normal text-sea-800/55"
+              />
+            </label>
+            <input
+              id="video-exts"
+              type="text"
+              value={value.videoExtensionsInput}
+              onChange={(e) => handleVideoExtChange(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl border border-white/25 bg-white/30 px-3 py-2 text-sm text-sea-950 shadow-inner backdrop-blur-sm placeholder:text-sea-800/40 focus:border-sea-500/40 focus:outline-none focus:ring-1 focus:ring-sea-600/30"
+              placeholder="mp4, mov, avi..."
+            />
+          </div>
         </div>
-
-        <div className="space-y-1">
-          <label htmlFor="video-exts" className="block text-xs font-medium text-gray-700">
-            视频扩展名
-          </label>
-          <input
-            id="video-exts"
-            type="text"
-            value={value.videoExtensionsInput}
-            onChange={(e) => handleVideoExtChange(e.target.value)}
-            className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="例如：mp4, mov, avi, mkv"
+        <p className="text-[11px] text-sea-800/60">
+          <BilingualStack
+            en="(Spaces or commas; leave blank to restore defaults.)"
+            zh="（支持空格或逗号分隔；留空恢复默认）"
+            primaryClassName="text-sea-800/75"
+            secondaryClassName="text-[11px] text-sea-800/55 mt-0.5"
           />
-          <p className="text-xs text-gray-500">
-            同上；仅影响“照片 / 视频 / 其他”分类，不改变去重逻辑。
-          </p>
-        </div>
+        </p>
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
-        <p className="text-xs text-gray-500">
-          {isDirty ? "当前修改尚未保存" : "配置已保存"}
+      <div className="flex items-center justify-between gap-2 border-t border-white/15 pt-3">
+        <p className="text-[11px] text-sea-800/65">
+          {isDirty ? (
+            <BilingualInline
+              en="Unsaved changes"
+              zh="有未保存更改"
+              primaryClassName="text-sea-900"
+              secondaryClassName="text-[11px] text-sea-800/55"
+            />
+          ) : (
+            <BilingualInline
+              en="Saved"
+              zh="已保存"
+              primaryClassName="text-sea-900"
+              secondaryClassName="text-[11px] text-sea-800/55"
+            />
+          )}
         </p>
         <button
           type="button"
           onClick={onSave}
-          className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+          className="shrink-0 rounded-full border border-white/30 bg-sea-800/90 px-4 py-1.5 text-xs font-medium text-white shadow-glass-sm backdrop-blur-sm hover:bg-sea-800"
         >
-          保存配置
+          <BilingualButtonLabel en="Save" zh="保存" />
         </button>
       </div>
     </div>
   );
 }
-
