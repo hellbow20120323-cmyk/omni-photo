@@ -1,0 +1,65 @@
+# 手动触发：在 GitHub Runner 上产出未签名 macOS 包（无 Apple 证书）。
+# 正式签名 / 通用二进制 / 上架请使用本机 publish.sh。
+name: Build macOS (unsigned CI)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tauri-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Strip code signing for CI runner
+        run: |
+          python3 << 'PY'
+          import json
+          from pathlib import Path
+          p = Path("src-tauri/tauri.conf.json")
+          cfg = json.loads(p.read_text())
+          bundle = cfg.get("tauri", {}).get("bundle", {})
+          mac = bundle.get("macOS")
+          if isinstance(mac, dict):
+              mac.pop("signingIdentity", None)
+              mac.pop("entitlements", None)
+          p.write_text(json.dumps(cfg, indent=2) + "\n")
+          PY
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend (Vite)
+        run: npm run build
+
+      - name: Build Tauri (macOS dmg)
+        run: npm run tauri:build:mac-ci
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: omniphoto-macos-unsigned-${{ github.run_number }}
+          path: src-tauri/target/release/bundle/
+          if-no-files-found: error

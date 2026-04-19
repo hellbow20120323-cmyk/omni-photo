@@ -14,6 +14,10 @@
 - **后端**: Rust (Tauri)
 - **平台**: Mac / Windows / Linux
 
+## 发版与跨平台构建
+
+Mac / Windows **可分开发版**，流程与版本号约定见 **[docs/RELEASE.md](./docs/RELEASE.md)**。GitHub Actions 提供手动触发的 **Build Windows**、**Build macOS (unsigned CI)** 工作流。
+
 ## 🚀 快速开始
 
 ### 启动开发模式

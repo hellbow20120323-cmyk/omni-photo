@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build --bundles app --target universal-apple-darwin"
+    "tauri:build": "tauri build --bundles app --target universal-apple-darwin",
+    "tauri:build:windows": "tauri build",
+    "tauri:build:mac-ci": "tauri build --bundles dmg"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.5.0",
