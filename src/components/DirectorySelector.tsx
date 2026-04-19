@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/api/dialog";
 import { FolderOpen } from "lucide-react";
 import { useDisplayMode } from "../context/DisplayModeContext";
 import { BilingualInline, BilingualButtonLabel } from "./Bilingual";
+import { middleTruncatePath } from "../lib/middleTruncate";
 
 type DropTargetId = "source" | "target";
 
@@ -39,7 +40,7 @@ export default function DirectorySelector({
     const selected = await open({
       directory: true,
       multiple: false,
-      title: mode === "bilingual" ? `${labelEn} · ${labelZh}` : labelZh,
+      title: mode === "zh" ? labelZh : labelEn,
     });
 
     if (selected && typeof selected === "string") {
@@ -64,8 +65,10 @@ export default function DirectorySelector({
     onDropTargetChange?.(null);
   };
 
+  const pathDisplay = value ? middleTruncatePath(value, 54) : "";
+
   return (
-    <div className="min-w-0 flex-1 space-y-2">
+    <div className="min-w-0 flex-1 space-y-4">
       <label className="block text-xs font-medium uppercase tracking-[0.12em] text-sea-800/55">
         <BilingualInline
           en={labelEn}
@@ -80,15 +83,15 @@ export default function DirectorySelector({
           borderColor: lifted ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.22)",
         }}
         transition={{ type: "spring", stiffness: 420, damping: 28 }}
-        className={`rounded-[22px] border bg-white/25 p-4 shadow-glass-sm backdrop-blur-md sm:p-5 ${
+        className={`rounded-[20px] border bg-white/25 p-6 shadow-glass-sm backdrop-blur-md ${
           lifted ? "shadow-glass ring-1 ring-white/35" : ""
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-1 items-start gap-2">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-4">
             <FolderOpen
               className="mt-0.5 h-4 w-4 shrink-0 text-sea-700/80"
               strokeWidth={1.75}
@@ -96,8 +99,11 @@ export default function DirectorySelector({
             />
             <div className="min-w-0 flex-1">
               {value ? (
-                <p className="text-sm font-light leading-snug text-sea-950 truncate" title={value}>
-                  {value}
+                <p
+                  className="text-sm font-light leading-snug text-sea-950"
+                  title={value}
+                >
+                  {pathDisplay}
                 </p>
               ) : (
                 <p className="text-sm font-light leading-snug">

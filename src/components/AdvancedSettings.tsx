@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { BilingualStack, BilingualInline, BilingualButtonLabel } from "./Bilingual";
+import { useDisplayMode } from "../context/DisplayModeContext";
 
 interface AdvancedOptions {
   preserveTopLevelDir: boolean;
@@ -20,6 +21,7 @@ export default function AdvancedSettings({
   onSave,
   isDirty,
 }: AdvancedSettingsProps) {
+  const { mode } = useDisplayMode();
   const handleTogglePreserve = (checked: boolean) => {
     onChange((prev) => ({
       ...prev,
@@ -42,7 +44,7 @@ export default function AdvancedSettings({
   };
 
   return (
-    <div className="glass-panel-subtle space-y-5 rounded-2xl border border-dashed border-white/25 p-4">
+    <div className="glass-panel-subtle space-y-4 rounded-2xl border border-dashed border-white/25 p-6">
       <div>
         <h2 className="text-sm font-medium text-sea-950">
           <BilingualInline
@@ -88,7 +90,7 @@ export default function AdvancedSettings({
         </label>
       </div>
 
-      <div className="space-y-3 border-t border-white/15 pt-4">
+      <div className="space-y-4 border-t border-white/15 pt-4">
         <h3 className="text-xs font-medium text-sea-900">
           <BilingualInline
             en="File type recognition"
@@ -97,8 +99,8 @@ export default function AdvancedSettings({
             secondaryClassName="text-[11px] font-normal text-sea-800/55"
           />
         </h3>
-        <div className="space-y-3">
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+        <div className="space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <label
               htmlFor="photo-exts"
               className="shrink-0 text-xs font-medium text-sea-900 sm:basis-36 sm:pt-0.5"
@@ -116,10 +118,10 @@ export default function AdvancedSettings({
               value={value.photoExtensionsInput}
               onChange={(e) => handlePhotoExtChange(e.target.value)}
               className="min-w-0 flex-1 rounded-xl border border-white/25 bg-white/30 px-3 py-2 text-sm text-sea-950 shadow-inner backdrop-blur-sm placeholder:text-sea-800/40 focus:border-sea-500/40 focus:outline-none focus:ring-1 focus:ring-sea-600/30"
-              placeholder="jpg, png, heic..."
+              placeholder={mode === "zh" ? "jpg、png、heic…" : "jpg, png, heic…"}
             />
           </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <label
               htmlFor="video-exts"
               className="shrink-0 text-xs font-medium text-sea-900 sm:basis-36 sm:pt-0.5"
@@ -137,7 +139,7 @@ export default function AdvancedSettings({
               value={value.videoExtensionsInput}
               onChange={(e) => handleVideoExtChange(e.target.value)}
               className="min-w-0 flex-1 rounded-xl border border-white/25 bg-white/30 px-3 py-2 text-sm text-sea-950 shadow-inner backdrop-blur-sm placeholder:text-sea-800/40 focus:border-sea-500/40 focus:outline-none focus:ring-1 focus:ring-sea-600/30"
-              placeholder="mp4, mov, avi..."
+              placeholder={mode === "zh" ? "mp4、mov、avi…" : "mp4, mov, avi…"}
             />
           </div>
         </div>
@@ -151,7 +153,7 @@ export default function AdvancedSettings({
         </p>
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-t border-white/15 pt-3">
+      <div className="flex items-center justify-between gap-4 border-t border-white/15 pt-4">
         <p className="text-[11px] text-sea-800/65">
           {isDirty ? (
             <BilingualInline

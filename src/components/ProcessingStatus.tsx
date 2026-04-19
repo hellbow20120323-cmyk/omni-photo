@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { motion } from "framer-motion";
-import { BilingualStack } from "./Bilingual";
+import { useDisplayMode } from "../context/DisplayModeContext";
+import ProgressMessageLine from "./ProgressMessageLine";
 
 interface ProgressInfo {
   current: number;
@@ -14,6 +15,8 @@ interface ProgressInfo {
     errors: number;
     processed: number;
     total_duplicate_size: number;
+    directory_preview?: string[];
+    directory_preview_truncated?: boolean;
   };
 }
 
@@ -35,6 +38,7 @@ function emotionalLine(progress: ProgressInfo | null): { en: string; zh: string 
 }
 
 export default function ProcessingStatus({ progress, isProcessing }: ProcessingStatusProps) {
+  const { mode } = useDisplayMode();
   const ringGradientId = useId().replace(/:/g, "");
   if (!isProcessing && !progress) return null;
 
@@ -43,11 +47,17 @@ export default function ProcessingStatus({ progress, isProcessing }: ProcessingS
     progress && progress.total > 0
       ? Math.min(100, (progress.current / progress.total) * 100)
       : 0;
-  const line = emotionalLine(progress);
+  const phases = emotionalLine(progress);
+  const lineText = mode === "zh" ? phases.zh : phases.en;
 
   const r = 44;
   const c = 2 * Math.PI * r;
   const dash = indeterminate ? c * 0.22 : (pct / 100) * c;
+
+  const barTrackClass =
+    "relative mt-4 h-2.5 overflow-hidden rounded-full border border-sea-950/[0.08] bg-sea-950/[0.08] shadow-[inset_0_1px_4px_rgba(10,22,40,0.14)]";
+  const barGlowClass =
+    "relative h-full rounded-full bg-gradient-to-r from-sea-800 to-sea-600/90 shadow-[2px_0_14px_-1px_rgba(80,120,160,0.65)]";
 
   return (
     <motion.div
@@ -56,7 +66,7 @@ export default function ProcessingStatus({ progress, isProcessing }: ProcessingS
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 360, damping: 32 }}
     >
-      <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:justify-center sm:gap-8">
+      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-center">
         <div className="relative h-[108px] w-[108px] shrink-0">
           <svg className="-rotate-90 transform" width="108" height="108" viewBox="0 0 108 108">
             <circle
@@ -110,33 +120,22 @@ export default function ProcessingStatus({ progress, isProcessing }: ProcessingS
         </div>
 
         <div className="min-w-0 flex-1 text-center sm:text-left">
-          <p className="text-base font-light leading-snug text-sea-950 sm:text-lg">
-            <BilingualStack
-              en={line.en}
-              zh={line.zh}
-              primaryClassName="text-sea-950"
-              secondaryClassName="text-sm font-normal text-sea-800/65 mt-1"
-            />
-          </p>
-          {progress?.message && (
-            <p className="mt-2 truncate text-xs text-sea-800/55" title={progress.message}>
-              {progress.message}
-            </p>
-          )}
+          <p className="text-base font-light leading-snug text-sea-950 sm:text-lg">{lineText}</p>
+          {progress?.message && <ProgressMessageLine message={progress.message} />}
         </div>
       </div>
 
-      <div className="relative mt-5 h-2 overflow-hidden rounded-full border border-white/20 bg-white/25">
+      <div className={barTrackClass}>
         {!indeterminate ? (
           <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-sea-800 to-sea-600/90"
+            className={barGlowClass}
             initial={false}
             animate={{ width: `${Math.max(5, pct)}%` }}
             transition={{ type: "spring", stiffness: 200, damping: 28 }}
           />
         ) : (
           <motion.div
-            className="absolute inset-y-0 w-[42%] rounded-full bg-gradient-to-r from-sea-800/95 to-sea-600/85 shadow-sm"
+            className={`absolute inset-y-0 w-[42%] rounded-full bg-gradient-to-r from-sea-800/95 to-sea-600/85 shadow-[2px_0_12px_-1px_rgba(80,120,160,0.5)]`}
             initial={{ left: "-35%" }}
             animate={{ left: "72%" }}
             transition={{

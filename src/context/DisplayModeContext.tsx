@@ -7,31 +7,36 @@ import {
   type ReactNode,
 } from "react";
 
-export type UiDisplayMode = "bilingual" | "zh-only";
+/** UI language: Chinese or English only (no mixed copy). */
+export type UiLocale = "zh" | "en";
 
-const STORAGE_KEY = "omniPhotoUiDisplay";
+const STORAGE_KEY = "omniPhotoUiLocale";
+const LEGACY_STORAGE_KEY = "omniPhotoUiDisplay";
 
 type Ctx = {
-  mode: UiDisplayMode;
-  setMode: (m: UiDisplayMode) => void;
+  mode: UiLocale;
+  setMode: (m: UiLocale) => void;
 };
 
 const DisplayModeContext = createContext<Ctx | null>(null);
 
-function readStoredMode(): UiDisplayMode {
+function readStoredLocale(): UiLocale {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
-    if (s === "zh-only" || s === "bilingual") return s;
+    if (s === "zh" || s === "en") return s;
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy === "zh-only") return "zh";
+    if (legacy === "bilingual") return "en";
   } catch {
     /* ignore */
   }
-  return "bilingual";
+  return "zh";
 }
 
 export function DisplayModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<UiDisplayMode>(readStoredMode);
+  const [mode, setModeState] = useState<UiLocale>(readStoredLocale);
 
-  const setMode = useCallback((m: UiDisplayMode) => {
+  const setMode = useCallback((m: UiLocale) => {
     setModeState(m);
     try {
       localStorage.setItem(STORAGE_KEY, m);

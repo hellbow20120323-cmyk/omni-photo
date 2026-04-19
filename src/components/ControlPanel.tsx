@@ -16,16 +16,16 @@ export default function ControlPanel({ isProcessing, onStart, onCancel }: Contro
         <motion.button
           type="button"
           onClick={onCancel}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
           transition={springBtn}
-          className="min-w-[200px] rounded-full border border-rose-300/40 bg-gradient-to-r from-rose-900/85 to-rose-800/80 px-10 py-3 text-white shadow-glass-sm backdrop-blur-md"
+          className="min-w-[200px] rounded-full border border-rose-300/55 bg-white/[0.12] px-10 py-3 text-rose-900/75 shadow-none backdrop-blur-md transition-colors hover:border-rose-400/65 hover:bg-white/20"
         >
           <BilingualButtonLabel
             en="Cancel"
             zh="取消"
-            primaryClassName="text-sm font-medium tracking-[0.04em]"
-            secondaryClassName="text-[11px] font-normal tracking-[0.12em] text-white/88"
+            primaryClassName="text-sm font-medium tracking-[0.04em] text-rose-900/80"
+            secondaryClassName="text-[11px] font-normal tracking-[0.12em] text-rose-800/70"
           />
         </motion.button>
       ) : (

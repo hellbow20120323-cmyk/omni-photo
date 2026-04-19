@@ -37,7 +37,6 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "resources": ["dist/**/*"],
       "macOS": {
         "entitlements": "Entitlements.plist",
         "signingIdentity": "Developer ID Application: tallboy chen (8JWMAN8ZT3)"

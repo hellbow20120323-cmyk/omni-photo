@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
@@ -38,6 +38,9 @@ interface ProgressInfo {
     errors: number;
     processed: number;
     total_duplicate_size: number;
+    /** Only present on the final invoke result; omitted on progress events. */
+    directory_preview?: string[];
+    directory_preview_truncated?: boolean;
   };
 }
 
@@ -72,7 +75,6 @@ function App() {
     stats: ResultStats;
     archivePath: string;
   } | null>(null);
-
   const firstProgressLogged = useRef(false);
   const debugLog = (message: string, data: Record<string, unknown>, hypothesisId: string) => {
     fetch("http://127.0.0.1:7242/ingest/daed423e-5dfd-4436-9df1-2d61b8be3976", {
@@ -101,9 +103,9 @@ function App() {
       setDuplicatesFolderSize(null);
       setLogs((prev) => [
         ...prev,
-        mode === "zh-only"
-          ? `无法统计 _Duplicates文件夹：${e}`
-          : `Failed to measure _Duplicates folder / 无法统计 _Duplicates：${e}`,
+        mode === "zh"
+          ? `无法统计 _Duplicates 文件夹：${e}`
+          : `Could not measure _Duplicates folder: ${e}`,
       ]);
     } finally {
       setDuplicatesSizeLoading(false);
@@ -168,9 +170,7 @@ function App() {
           .catch((e) =>
             setLogs((prev) => [
               ...prev,
-              mode === "zh-only"
-                ? `拖放路径失败：${e}`
-                : `Drop path failed / 拖放路径失败：${e}`,
+              mode === "zh" ? `拖放路径失败：${e}` : `Drop path failed: ${e}`,
             ]),
           );
       })
@@ -186,21 +186,17 @@ function App() {
     debugLog("handleStart entered", { sourceDir: !!sourceDir, targetDir: !!targetDir }, "H4");
     if (!sourceDir || !targetDir) {
       setNotice({
-        title: mode === "zh-only" ? "请选择目录" : "Choose folders",
+        title: mode === "zh" ? "请选择目录" : "Choose folders",
         message:
-          mode === "zh-only"
+          mode === "zh"
             ? "请先选择收件箱与归档库文件夹。"
-            : "Choose both inbox and archive folders first.\n\n请先选择收件箱与归档库文件夹。",
+            : "Choose both inbox and archive folders first.",
       });
       return;
     }
 
     setIsProcessing(true);
-    setLogs([
-      mode === "zh-only"
-        ? "正在检查磁盘可用空间…"
-        : "Checking free disk space…（正在检查磁盘可用空间）",
-    ]);
+    setLogs([mode === "zh" ? "正在检查磁盘可用空间…" : "Checking free disk space…"]);
     setProgress(null);
 
     try {
@@ -218,26 +214,23 @@ function App() {
         setIsProcessing(false);
         setLogs((prev) => [
           ...prev,
-          mode === "zh-only" ? "预检：磁盘空间不足" : "Pre-check: not enough disk space（空间不足）",
+          mode === "zh" ? "预检：磁盘空间不足" : "Pre-check: not enough disk space",
         ]);
         setNotice({
-          title: mode === "zh-only" ? "空间不足" : "Not enough space",
+          title: mode === "zh" ? "空间不足" : "Not enough space",
           message:
-            mode === "zh-only"
+            mode === "zh"
               ? `磁盘空间不足，无法安全复制。\n\n收件箱合计：${formatBytes(check.source_size)}\n归档盘可用：${formatBytes(check.available_on_target)}\n\n请释放空间或更换归档位置。`
-              : `Not enough free space to copy safely.\n磁盘空间不足，无法安全复制。\n\nInbox total / 收件箱合计：${formatBytes(check.source_size)}\nFree on archive volume / 归档盘可用：${formatBytes(check.available_on_target)}\n\nFree up space or pick another archive folder.\n请释放空间或更换归档位置。`,
+              : `Not enough free space to copy safely.\n\nInbox total: ${formatBytes(check.source_size)}\nFree on archive volume: ${formatBytes(check.available_on_target)}\n\nFree up space or choose another archive folder.`,
         });
         return;
       }
     } catch (e) {
       setIsProcessing(false);
-      setLogs((prev) => [
-        ...prev,
-        mode === "zh-only" ? `预检失败：${e}` : `Pre-check failed / 预检失败：${e}`,
-      ]);
+      setLogs((prev) => [...prev, mode === "zh" ? `预检失败：${e}` : `Pre-check failed: ${e}`]);
       setNotice({
-        title: mode === "zh-only" ? "磁盘检查失败" : "Disk check failed",
-        message: mode === "zh-only" ? String(e) : `Disk check failed / 磁盘检查失败：\n${e}`,
+        title: mode === "zh" ? "磁盘检查失败" : "Disk check failed",
+        message: String(e),
       });
       return;
     }
@@ -267,9 +260,7 @@ function App() {
     debugLog("setIsProcessing true, invoking process_files", {}, "H2");
     setLogs((prev) => [
       ...prev,
-      mode === "zh-only"
-        ? "预检通过，开始整理…"
-        : "Pre-check OK, organizing…（预检通过，开始整理）",
+      mode === "zh" ? "预检通过，开始整理…" : "Pre-check passed. Organizing…",
     ]);
     setProgress(null);
 
@@ -281,18 +272,28 @@ function App() {
         advanced: advancedPayload,
       });
 
-      setLogs((prev) => [...prev, mode === "zh-only" ? "已完成。" : "Done.（已完成）"]);
-      const s = stats as ResultStats;
+      setLogs((prev) => [...prev, mode === "zh" ? "已完成。" : "Done."]);
+      const raw = stats as Partial<ResultStats>;
+      const s: ResultStats = {
+        photos: raw.photos ?? 0,
+        videos: raw.videos ?? 0,
+        others: raw.others ?? 0,
+        duplicates: raw.duplicates ?? 0,
+        errors: raw.errors ?? 0,
+        processed: raw.processed ?? 0,
+        total_duplicate_size: raw.total_duplicate_size ?? 0,
+        directory_preview: raw.directory_preview ?? [],
+        directory_preview_truncated: raw.directory_preview_truncated ?? false,
+      };
       setProgress(null);
-      setResultData({ stats: s, archivePath: targetDir });
-      setResultOpen(true);
+      startTransition(() => {
+        setResultData({ stats: s, archivePath: targetDir });
+        setResultOpen(true);
+      });
     } catch (error) {
-      setLogs((prev) => [
-        ...prev,
-        mode === "zh-only" ? `错误：${error}` : `Error / 错误：${error}`,
-      ]);
+      setLogs((prev) => [...prev, mode === "zh" ? `错误：${error}` : `Error: ${error}`]);
       setNotice({
-        title: mode === "zh-only" ? "失败" : "Failed",
+        title: mode === "zh" ? "失败" : "Failed",
         message: String(error),
       });
     } finally {
@@ -304,7 +305,7 @@ function App() {
     try {
       await invoke("cancel_task");
       setIsProcessing(false);
-      setLogs((prev) => [...prev, mode === "zh-only" ? "已取消。" : "Cancelled.（已取消）"]);
+      setLogs((prev) => [...prev, mode === "zh" ? "已取消。" : "Cancelled."]);
     } catch (error) {
       console.error("cancel_task failed:", error);
     }
@@ -313,30 +314,26 @@ function App() {
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-morandi-100 via-sea-100/90 to-[#b8c5d4] px-4 py-8 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-4xl">
-        <div className="glass-panel rounded-[28px] border border-white/20 bg-white/30 p-6 shadow-glass backdrop-blur-xl sm:p-10">
-          <header className="relative mb-10 sm:mb-12">
+        <div className="glass-panel rounded-[28px] border border-white/20 bg-white/30 p-6 shadow-glass backdrop-blur-xl">
+          <header className="relative mb-4">
             <div className="absolute right-0 top-0 z-10">
               <LanguageToggle />
             </div>
             <h1 className="px-2 text-center text-3xl font-light tracking-tight text-sea-950 sm:px-16 sm:text-4xl">
-              {mode === "bilingual" ? (
+              {mode === "zh" ? (
+                <span className="block">全能照片管家 · 照片整理</span>
+              ) : (
                 <>
                   <span className="block">OmniPhoto</span>
-                  <span className="mt-1 block text-lg font-light text-sea-800/75 sm:text-xl">
+                  <span className="mt-2 block text-lg font-light text-sea-800/75 sm:text-xl">
                     Photo organizer
                   </span>
-                  <span className="mt-2 block text-base font-light text-sea-800/60">
-                    全能照片管家 · 照片整理
-                  </span>
                 </>
-              ) : (
-                <span className="block">全能照片管家 · 照片整理</span>
               )}
             </h1>
           </header>
 
           <div className="relative z-0">
-            {/* Soft flow ribbon linking both path cards */}
             <div
               className="pointer-events-none absolute left-[8%] right-[8%] top-[48%] z-0 hidden -translate-y-1/2 sm:block"
               aria-hidden
@@ -349,7 +346,7 @@ function App() {
             >
               <div className="h-full w-full rounded-full bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-60 shadow-[0_0_20px_rgba(255,255,255,0.55)]" />
             </div>
-            <div className="relative z-10 flex flex-col items-stretch gap-2 sm:flex-row sm:items-stretch sm:gap-3">
+            <div className="relative z-10 flex flex-col items-stretch gap-4 sm:flex-row sm:items-stretch">
               <DirectorySelector
                 labelEn="Source Path"
                 labelZh="待整理路径"
@@ -380,7 +377,7 @@ function App() {
           </div>
 
           {targetDir && (
-            <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-white/20 bg-white/20 px-4 py-3 shadow-glass-sm backdrop-blur-md">
+            <div className="mt-4 flex flex-wrap items-center gap-4 rounded-2xl border border-white/20 bg-white/20 p-6 shadow-glass-sm backdrop-blur-md">
               <span className="text-sm text-sea-900/85">
                 <BilingualInline
                   en="_Duplicates size"
@@ -421,14 +418,14 @@ function App() {
             </div>
           )}
 
-          <div className="mt-7">
+          <div className="mt-4">
             <DedupeSettingsCard
               checked={compareWithArchive}
               onChange={setCompareWithArchive}
             />
           </div>
 
-          <div className="mt-8">
+          <div className="mt-4">
             <ControlPanel
               isProcessing={isProcessing}
               onStart={handleStart}
@@ -437,12 +434,12 @@ function App() {
           </div>
 
           {(isProcessing || progress) && (
-            <div className="mt-8">
+            <div className="mt-4">
               <ProcessingStatus progress={progress} isProcessing={isProcessing} />
             </div>
           )}
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-4 flex justify-end">
             <button
               type="button"
               onClick={() => setShowAdvanced((prev) => !prev)}
@@ -483,14 +480,12 @@ function App() {
                     setAdvancedDirty(false);
                     setLogs((prev) => [
                       ...prev,
-                      mode === "zh-only"
-                        ? "高级设置已保存"
-                        : "Advanced settings saved（高级设置已保存）",
+                      mode === "zh" ? "高级设置已保存" : "Advanced settings saved.",
                     ]);
                   } catch (e) {
                     setLogs((prev) => [
                       ...prev,
-                      mode === "zh-only" ? `保存失败：${e}` : `Save failed / 保存失败：${e}`,
+                      mode === "zh" ? `保存失败：${e}` : `Save failed: ${e}`,
                     ]);
                   }
                 }}
@@ -516,7 +511,7 @@ function App() {
       >
         <ScrollText className="h-4 w-4 text-sea-700" strokeWidth={1.75} />
         <BilingualInline
-          en="Details"
+          en="Activity log"
           zh="查看日志"
           primaryClassName="text-[11px] font-medium tracking-[0.06em] text-sea-900"
           secondaryClassName="text-[10px] font-normal tracking-[0.1em] text-sea-800/58"

@@ -48,7 +48,18 @@ pub struct ProcessingStats {
     pub processed: usize,
     /// Total bytes in _Duplicates (updated as duplicates are copied).
     pub total_duplicate_size: u64,
+    /// Unique archive-relative directory paths written this run (filled only in the final result, not on progress events).
+    #[serde(default)]
+    pub directory_preview: Vec<String>,
+    /// True if more distinct directories existed than `MAX_DIR_PREVIEW_ENTRIES`.
+    #[serde(default)]
+    pub directory_preview_truncated: bool,
 }
+
+/// Cap unique directory paths collected for the result modal (avoid huge payloads / UI work).
+const MAX_DIR_PREVIEW_ENTRIES: usize = 400;
+/// Max UTF-8 length per preview line (archive-relative path).
+const MAX_DIR_PREVIEW_LINE_CHARS: usize = 512;
 
 /// Advanced options from the frontend.
 #[derive(Debug, Clone, Deserialize)]
@@ -158,6 +169,44 @@ fn check_path_conflict(source: &PathBuf, target: &PathBuf) -> Result<(), String>
     Ok(())
 }
 
+fn normalize_rel_dir(archive_root: &Path, dir: &Path) -> Option<String> {
+    let rel = dir.strip_prefix(archive_root).ok()?;
+    let s = rel.to_string_lossy().replace('\\', "/");
+    let s = s.trim_matches('/').to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// Record a unique archive-relative directory path for the result modal; respects caps to keep payloads small.
+fn try_add_dir_preview(
+    set: &mut HashSet<String>,
+    overflow: &mut bool,
+    archive_root: &Path,
+    dir: &Path,
+) {
+    if *overflow {
+        return;
+    }
+    let Some(mut line) = normalize_rel_dir(archive_root, dir) else {
+        return;
+    };
+    if line.len() > MAX_DIR_PREVIEW_LINE_CHARS {
+        line.truncate(MAX_DIR_PREVIEW_LINE_CHARS.saturating_sub(1));
+        line.push('…');
+    }
+    if set.contains(&line) {
+        return;
+    }
+    if set.len() >= MAX_DIR_PREVIEW_ENTRIES {
+        *overflow = true;
+        return;
+    }
+    set.insert(line);
+}
+
 /// Copy files into archive layout; never delete sources.
 /// * compare_with_archive: if true, dedupe against existing archive content too.
 #[tauri::command]
@@ -230,6 +279,8 @@ async fn process_files(
             errors: 0,
             processed: 0,
             total_duplicate_size: 0,
+            directory_preview: vec![],
+            directory_preview_truncated: false,
         });
     }
 
@@ -268,7 +319,12 @@ async fn process_files(
         errors: 0,
         processed: 0,
         total_duplicate_size: 0,
+        directory_preview: vec![],
+        directory_preview_truncated: false,
     };
+
+    let mut dir_preview: HashSet<String> = HashSet::new();
+    let mut preview_overflow = false;
 
     // Process each file (处理每个文件)
     for (idx, file_path) in files.iter().enumerate() {
@@ -305,6 +361,12 @@ async fn process_files(
                 Ok(_) => {
                     stats.duplicates += 1;
                     stats.total_duplicate_size += file_size;
+                    try_add_dir_preview(
+                        &mut dir_preview,
+                        &mut preview_overflow,
+                        &target_path,
+                        &duplicates_dir,
+                    );
                     send_progress(
                         &app_handle,
                         idx + 1,
@@ -436,6 +498,14 @@ async fn process_files(
             Ok(_) => {
                 seen_hashes.insert(hash);
                 stats.processed += 1;
+                if let Some(parent) = dest_path.parent() {
+                    try_add_dir_preview(
+                        &mut dir_preview,
+                        &mut preview_overflow,
+                        &target_path,
+                        parent,
+                    );
+                }
                 let dest_subpath = format!("{}/{}/{}", type_dir, year, month);
                 send_progress(&app_handle, idx + 1, total,
                     format!("Processed: {} → {}", filename, dest_subpath), &stats);
@@ -447,6 +517,11 @@ async fn process_files(
             }
         }
     }
+
+    let mut dirs: Vec<String> = dir_preview.into_iter().collect();
+    dirs.sort();
+    stats.directory_preview = dirs;
+    stats.directory_preview_truncated = preview_overflow;
 
     Ok(stats)
 }

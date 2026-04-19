@@ -22,21 +22,12 @@ export default function LocalFirstBadge() {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={
-          mode === "zh-only"
-            ? "查看安全与隐私说明"
-            : "Open safety and privacy information"
+          mode === "zh" ? "查看安全与隐私说明" : "Open safety and privacy information"
         }
       >
         <Lock className="h-4 w-4 shrink-0 text-sea-700" strokeWidth={1.75} aria-hidden />
         <span className="min-w-0 text-[11px] font-medium leading-snug tracking-wide text-sea-900/90">
-          {mode === "zh-only" ? (
-            "安全与隐私"
-          ) : (
-            <span className="flex flex-col leading-tight">
-              <span>Safety & privacy</span>
-              <span className="text-[10px] font-normal text-sea-800/55">安全与隐私</span>
-            </span>
-          )}
+          {mode === "zh" ? "安全与隐私" : "Safety & privacy"}
         </span>
       </motion.button>
 
@@ -46,7 +37,7 @@ export default function LocalFirstBadge() {
             <motion.button
               type="button"
               className="fixed inset-0 z-[80] bg-sea-950/30 backdrop-blur-md"
-              aria-label={mode === "zh-only" ? "关闭" : "Close"}
+              aria-label={mode === "zh" ? "关闭" : "Close"}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

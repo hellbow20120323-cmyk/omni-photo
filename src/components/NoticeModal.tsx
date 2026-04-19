@@ -57,7 +57,7 @@ export default function NoticeModal({ open, title, message, onClose }: NoticeMod
               onClick={onClose}
               className="mt-5 w-full rounded-full border border-white/25 bg-sea-800/90 py-2.5 text-sm font-medium text-white shadow-glass-sm backdrop-blur-sm transition-colors hover:bg-sea-800"
             >
-              {mode === "zh-only" ? "好的" : "OK"}
+              {mode === "zh" ? "好的" : "OK"}
             </button>
             </motion.div>
           </div>

@@ -1,0 +1,33 @@
+---
+description: OmniPhoto UI/UX — macOS 现代感、浅色系 Neumorphism、8px 间距、路径中间截断、实时文件名 SF Mono
+globs: src/**/*.tsx,src/**/*.css,tailwind.config.js
+alwaysApply: true
+---
+
+# UI/UX 设计规范（OmniPhoto）
+
+在修改或新增前端界面（React/Tailwind）时遵循以下规范。
+
+## 风格
+
+- 遵循 **macOS 原生现代感**：干净、柔和、不过分装饰。
+- **圆角**：组件与卡片使用 **12px–20px** 级别圆角（与现有 `rounded-2xl` / `rounded-[22px]` 等体系一致，新组件落在该区间）。
+- **浅色系 Neumorphism**：以浅色底、柔和外轮廓/内高光区分层级，避免厚重拟物；与当前 glass / morandi 调色板协调。
+
+## 视觉层级
+
+1. **进度条**：轨道需有明确「槽」感——使用 **微弱内阴影（inset shadow）** 或 **略深于面板的背景色**，让进度填充与轨道可区分。
+2. **危险操作**（如「取消」）：使用 **Outlined（描边）样式** 或 **低饱和度红色**，**不得**与高对比主按钮竞争注意力；进度条/主流程保持视觉重心。
+
+## 排版
+
+1. **路径展示**：长路径须支持 **中间截断（middle truncation）**，形如 `/Users/.../Photos`（保留首尾片段，中间省略）；实现上可用 `title` 展示全文 + CSS 或专用截断逻辑。
+2. **间距**：内外边距严格遵循 **8px 倍数**（如 8 / 16 / 24 / 32；小间距可用 4px 作微调仅限辅助信息）。
+
+## 动态感
+
+- 实时处理中展示的 **文件名**（如 `IMG_xxxx.JPG`）使用 **SF Mono**（在 Web 上用 `font-mono` 并优先保证与系统栈一致，如 `ui-monospace, SFMono-Regular, Menlo`），并 **加粗（font-semibold 或 font-bold）**，强化技术反馈感；普通说明性文案不必全程等宽。
+
+## 自检
+
+- 新增/改动按钮与进度条时，对照「危险操作不抢主流程」与「进度轨道可读」两条验收。

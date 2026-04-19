@@ -1,7 +1,11 @@
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { PanelRightClose, ScrollText } from "lucide-react";
 import { useDisplayMode } from "../context/DisplayModeContext";
 import { BilingualInline } from "./Bilingual";
+
+/** Pixels from bottom to still count as “viewing latest”. */
+const STICK_BOTTOM_THRESHOLD = 72;
 
 interface LogDrawerProps {
   open: boolean;
@@ -29,8 +33,61 @@ function LogLine({ text, index }: { text: string; index: number }) {
   );
 }
 
+function isNearBottom(el: HTMLElement) {
+  const { scrollTop, scrollHeight, clientHeight } = el;
+  return scrollHeight - scrollTop - clientHeight <= STICK_BOTTOM_THRESHOLD;
+}
+
 export default function LogDrawer({ open, onClose, logs }: LogDrawerProps) {
   const { mode } = useDisplayMode();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const wasOpenRef = useRef(false);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = isNearBottom(el);
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    if (!wasOpenRef.current) {
+      stickToBottomRef.current = true;
+      wasOpenRef.current = true;
+    }
+
+    if (!el) return;
+    if (logs.length === 0) {
+      el.scrollTop = 0;
+      return;
+    }
+    if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [open, logs]);
+
+  /** Framer-motion line animations change height after layout; keep pinned to bottom when following. */
+  useEffect(() => {
+    if (!open) return;
+    const outer = scrollRef.current;
+    if (!outer) return;
+    const inner = outer.firstElementChild;
+    if (!inner) return;
+
+    const ro = new ResizeObserver(() => {
+      if (!stickToBottomRef.current) return;
+      outer.scrollTop = outer.scrollHeight;
+    });
+    ro.observe(inner);
+
+    return () => ro.disconnect();
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -39,7 +96,7 @@ export default function LogDrawer({ open, onClose, logs }: LogDrawerProps) {
           <motion.button
             key="log-drawer-backdrop"
             type="button"
-            aria-label={mode === "zh-only" ? "关闭日志" : "Close log panel"}
+            aria-label={mode === "zh" ? "关闭日志" : "Close log panel"}
             className="fixed inset-0 z-[60] bg-sea-950/20"
             style={{ backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
             initial={{ opacity: 0 }}
@@ -81,7 +138,11 @@ export default function LogDrawer({ open, onClose, logs }: LogDrawerProps) {
                 <PanelRightClose className="h-4 w-4" strokeWidth={1.75} />
               </motion.button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+            >
               <div className="font-mono text-[11px] leading-relaxed tracking-[0.01em] text-sea-900/88">
                 {logs.length === 0 ? (
                   <motion.p
@@ -90,7 +151,7 @@ export default function LogDrawer({ open, onClose, logs }: LogDrawerProps) {
                     animate={{ opacity: 1, filter: "blur(0px)" }}
                     transition={springLine}
                   >
-                    {mode === "zh-only" ? "暂无记录" : "No entries yet."}
+                    {mode === "zh" ? "暂无记录" : "No entries yet."}
                   </motion.p>
                 ) : (
                   logs.map((line, i) => <LogLine key={`${i}-${line}`} text={line} index={i} />)
