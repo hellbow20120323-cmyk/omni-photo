@@ -35,3 +35,5 @@ developerID_application.cer
 
 # Installer / release artifacts
 *.pkg
+OmniPhoto.app/
+OmniPhoto_*_test_*.zip

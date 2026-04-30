@@ -4,6 +4,7 @@ import { useDisplayMode } from "../context/DisplayModeContext";
 
 interface AdvancedOptions {
   preserveTopLevelDir: boolean;
+  archiveByDay: boolean;
   photoExtensionsInput: string;
   videoExtensionsInput: string;
 }
@@ -22,6 +23,13 @@ export default function AdvancedSettings({
   isDirty,
 }: AdvancedSettingsProps) {
   const { mode } = useDisplayMode();
+  const handleToggleArchiveByDay = (checked: boolean) => {
+    onChange((prev) => ({
+      ...prev,
+      archiveByDay: checked,
+    }));
+  };
+
   const handleTogglePreserve = (checked: boolean) => {
     onChange((prev) => ({
       ...prev,
@@ -85,6 +93,32 @@ export default function AdvancedSettings({
               zh="例如：/相册A/照片.jpg 归档后会保留在 /归档/相册A/... 下。"
               primaryClassName="text-sea-800/75"
               secondaryClassName="text-[11px] text-sea-800/60 mt-0.5"
+            />
+          </p>
+        </label>
+      </div>
+
+      <div className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          id="archive-by-day"
+          checked={value.archiveByDay}
+          onChange={(e) => handleToggleArchiveByDay(e.target.checked)}
+          className="mt-1 h-4 w-4 shrink-0 rounded border-white/40 bg-white/30 text-sea-700"
+        />
+        <label htmlFor="archive-by-day" className="cursor-pointer text-sm text-sea-900/90">
+          <BilingualStack
+            en="Archive by day under year and month"
+            zh="按日归档（在年、月下增加「日」文件夹）"
+            primaryClassName="font-medium text-sea-900"
+            secondaryClassName="text-xs font-normal text-sea-800/65 mt-1"
+          />
+          <p className="mt-1.5 text-xs leading-relaxed text-sea-800/72">
+            <BilingualStack
+              en='When enabled: Photos/2025/03/15/file.jpg instead of Photos/2025/03/file.jpg.'
+              zh="开启后路径示例：Photos/2025/03/15/文件名；关闭则为 Photos/2025/03/文件名。"
+              primaryClassName="text-sea-800/78"
+              secondaryClassName="text-[11px] text-sea-800/58 mt-1"
             />
           </p>
         </label>

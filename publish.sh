@@ -64,6 +64,16 @@ npx tauri build --bundles app --target universal-apple-darwin
 
 # --- 5. 嵌入描述文件、清理扩展属性并代码签名 ---
 if [ -d "$APP_PATH" ]; then
+    # Tauri v1 不会从 tauri.conf 写入独立 build 号；上架以 src-tauri/Info.plist 为准写入产物
+    BUNDLE_INFO="$APP_PATH/Contents/Info.plist"
+    if [ -f "$BUNDLE_INFO" ] && [ -f "src-tauri/Info.plist" ]; then
+        echo "[publish] 将 CFBundleShortVersionString / CFBundleVersion 同步为 src-tauri/Info.plist..."
+        M_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "src-tauri/Info.plist")
+        M_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "src-tauri/Info.plist")
+        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $M_VER" "$BUNDLE_INFO"
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $M_BUILD" "$BUNDLE_INFO"
+    fi
+
     echo "[publish] 正在嵌入 Mac App Store 描述文件..."
     cp "$PROVISION_SOURCE" "$APP_PATH/Contents/embedded.provisionprofile"
 

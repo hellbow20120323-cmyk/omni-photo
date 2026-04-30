@@ -1,6 +1,6 @@
 [package]
 name = "omni-photo"
-version = "0.1.0"
+version = "1.0.3"
 description = "Omni Photo — cross-platform photo organizer (全能照片管家)"
 authors = ["you"]
 license = ""

@@ -46,6 +46,7 @@ interface ProgressInfo {
 
 interface AdvancedOptions {
   preserveTopLevelDir: boolean;
+  archiveByDay: boolean;
   photoExtensionsInput: string;
   videoExtensionsInput: string;
 }
@@ -63,6 +64,7 @@ function App() {
   const [dropTarget, setDropTarget] = useState<"source" | "target" | null>(null);
   const [advancedOptions, setAdvancedOptions] = useState<AdvancedOptions>({
     preserveTopLevelDir: false,
+    archiveByDay: false,
     photoExtensionsInput: "jpg, jpeg, png, heic, raw, arw, dng, webp",
     videoExtensionsInput: "mp4, mov, avi, mkv",
   });
@@ -119,6 +121,7 @@ function App() {
         const parsed = JSON.parse(saved) as Partial<AdvancedOptions>;
         setAdvancedOptions((prev) => ({
           preserveTopLevelDir: parsed.preserveTopLevelDir ?? prev.preserveTopLevelDir,
+          archiveByDay: parsed.archiveByDay ?? prev.archiveByDay,
           photoExtensionsInput: parsed.photoExtensionsInput ?? prev.photoExtensionsInput,
           videoExtensionsInput: parsed.videoExtensionsInput ?? prev.videoExtensionsInput,
         }));
@@ -248,6 +251,7 @@ function App() {
 
     const advancedPayload: Record<string, unknown> = {
       preserveTopLevelDir: advancedOptions.preserveTopLevelDir,
+      archiveByDay: advancedOptions.archiveByDay,
     };
     if (photoExts.length > 0) {
       advancedPayload.photoExtensions = photoExts;

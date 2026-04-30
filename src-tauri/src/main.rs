@@ -67,6 +67,9 @@ const MAX_DIR_PREVIEW_LINE_CHARS: usize = 512;
 pub struct AdvancedOptions {
     /// Keep one top-level folder from the source tree in the archive.
     pub preserve_top_level_dir: bool,
+    /// Under each Y/M segment, add a day folder: .../Photos/YYYY/MM/DD/file
+    #[serde(default)]
+    pub archive_by_day: bool,
     /// Photo extensions (lowercase, no dot); omit for built-in defaults.
     pub photo_extensions: Option<Vec<String>>,
     /// Video extensions (lowercase, no dot); omit for built-in defaults.
@@ -227,7 +230,7 @@ async fn process_files(
     let target_path = PathBuf::from(&target_dir);
 
     // Advanced options: preserve top-level folder, photo/video extension lists (高级配置)
-    let (preserve_top_level_dir, photo_exts, video_exts) = match advanced {
+    let (preserve_top_level_dir, archive_by_day, photo_exts, video_exts) = match advanced {
         Some(opts) => {
             // Normalize extensions: trim, lowercase (归一化扩展名)
             let photo_exts = opts.photo_extensions.map(|list| {
@@ -242,9 +245,14 @@ async fn process_files(
                     .filter(|s| !s.is_empty())
                     .collect::<Vec<_>>()
             });
-            (opts.preserve_top_level_dir, photo_exts, video_exts)
+            (
+                opts.preserve_top_level_dir,
+                opts.archive_by_day,
+                photo_exts,
+                video_exts,
+            )
         }
-        None => (false, None, None),
+        None => (false, false, None, None),
     };
 
     // Validate paths (验证路径)
@@ -425,6 +433,7 @@ async fn process_files(
 
         let year = date.format("%Y").to_string();
         let month = date.format("%m").to_string();
+        let day = date.format("%d").to_string();
         let filename = file_path.file_name()
             .ok_or("Could not get file name")?
             .to_string_lossy()
@@ -458,37 +467,30 @@ async fn process_files(
         };
 
         // Layout: (目标路径组织)
-        // 1. Root file → target/Inbox_Direct/<type>/Y/M/file
-        // 2. Subfolder + preserve top-level → target/<folder>/<type>/Y/M/file
-        // 3. Else → target/<type>/Y/M/file
+        // Optional day: .../<type>/Y/M/D/file (when archive_by_day)
+        // 1. Root file → target/Inbox_Direct/<type>/Y/M/(D)/file
+        // 2. Subfolder + preserve top-level → target/<folder>/<type>/Y/M/(D)/file
+        // 3. Else → target/<type>/Y/M/(D)/file
+        let type_ym = {
+            let mut p = PathBuf::from(type_dir).join(&year).join(&month);
+            if archive_by_day {
+                p = p.join(&day);
+            }
+            p
+        };
         let dest_path = if is_root_file {
             target_path
                 .join("Inbox_Direct")
-                .join(type_dir)
-                .join(&year)
-                .join(&month)
+                .join(type_ym)
                 .join(&filename)
         } else if preserve_top_level_dir {
             if let Some(ref top) = top_level_dir_name {
-                target_path
-                    .join(top)
-                    .join(type_dir)
-                    .join(&year)
-                    .join(&month)
-                    .join(&filename)
+                target_path.join(top).join(type_ym).join(&filename)
             } else {
-                target_path
-                    .join(type_dir)
-                    .join(&year)
-                    .join(&month)
-                    .join(&filename)
+                target_path.join(type_ym).join(&filename)
             }
         } else {
-            target_path
-                .join(type_dir)
-                .join(&year)
-                .join(&month)
-                .join(&filename)
+            target_path.join(type_ym).join(&filename)
         };
 
         // Copy only; do not delete source (复制，不删源)
@@ -506,7 +508,11 @@ async fn process_files(
                         parent,
                     );
                 }
-                let dest_subpath = format!("{}/{}/{}", type_dir, year, month);
+                let dest_subpath = if archive_by_day {
+                    format!("{}/{}/{}/{}", type_dir, year, month, day)
+                } else {
+                    format!("{}/{}/{}", type_dir, year, month)
+                };
                 send_progress(&app_handle, idx + 1, total,
                     format!("Processed: {} → {}", filename, dest_subpath), &stats);
             }
